@@ -1,0 +1,10 @@
+paths:
+  raw: data/raw
+  bronze: data/bronze
+  silver: data/silver
+  gold: data/gold
+  reports: reports/generated
+
+spark:
+  app_name: big-data-spark-pipeline
+  master: local[*]

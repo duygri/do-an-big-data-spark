@@ -1,0 +1,21 @@
+name: Ingestion tests
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - run: python -m pip install 'pyspark>=3.5,<4' 'pytest>=8,<9' 'PyYAML>=6,<7'
+      - run: python -m pytest tests/integration/test_ingestion.py -q

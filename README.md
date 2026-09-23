@@ -5,7 +5,7 @@ Distributed data pipeline and analytics project using PySpark, Spark SQL, and Py
 ## Pipeline
 
 ```text
-raw input -> bronze/raw -> silver/cleaned -> gold/processed -> reports
+data/raw/nyc_taxi -> data/bronze/raw -> data/silver -> data/gold -> reports
 ```
 
 ## Project structure
@@ -46,12 +46,15 @@ scripts/             # Reproducible helper scripts
    pip install -r requirements.txt
    ```
 
-4. Copy `configs/config.example.yaml` to `configs/config.yaml` and adjust local paths.
-5. Run the pipeline entry point after the team modules are implemented:
+4. Place the NYC yellow taxi CSV files in `data/raw/nyc_taxi/`. The local dataset and generated Parquet are excluded from Git.
+5. Copy `configs/config.example.yaml` to `configs/config.yaml` and adjust local paths. The example reads all 18 monthly CSVs from 2019-01 through 2020-06. Use a single file path to run a smaller trial.
+6. Run the ingestion and Bronze stages:
 
    ```bash
    python -m src.pipeline.main --config configs/config.yaml
    ```
+
+   The command logs the schema, two sample rows, and verified Bronze row count. Bronze is overwritten on each run. Cleaning, transformation, and aggregation will be connected when those team modules are available. See [ingestion details](docs/ingestion.md).
 
 ## Contribution workflow
 

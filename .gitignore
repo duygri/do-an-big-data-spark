@@ -30,10 +30,10 @@ metastore_db/
 reports/generated/
 
 # Large or generated data files
-data/raw/*
-data/bronze/*
-data/silver/*
-data/gold/*
+data/raw/**
+data/bronze/**
+data/silver/**
+data/gold/**
 !data/raw/.gitkeep
 !data/bronze/.gitkeep
 !data/silver/.gitkeep

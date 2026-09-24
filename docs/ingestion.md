@@ -1,0 +1,9 @@
+# NYC Taxi ingestion and Bronze layer
+
+The source is the 18 NYC yellow taxi monthly CSV files from January 2019 through June 2020. Keep them under `data/raw/nyc_taxi/`, along with `taxi+_zone_lookup.csv` and `taxi_zones/`. Only `yellow_tripdata_*.csv` matches the default input glob. Neither source files nor generated Parquet belong in Git.
+
+Copy `configs/config.example.yaml` to `configs/config.yaml`, then run `python -m src.pipeline.main --config configs/config.yaml` from the repository root. To trial one month, set `input.path` to one CSV. To read JSON, set `input.format: json`, choose a JSON input path, and omit `input.schema` or supply an appropriate schema in code. Input path, format, header, reader options, Bronze path, Spark master, and maximum file partition size are configurable. Paths are relative to the current working directory.
+
+The CSV schema has 18 nullable fields in source order. `VendorID`, `passenger_count`, `RatecodeID`, `PULocationID`, `DOLocationID`, and `payment_type` are integers. Pickup and dropoff datetime are timestamps using `yyyy-MM-dd HH:mm:ss`. `store_and_fwd_flag` is a string. Trip distance and all fare, tax, tip, toll, surcharge, and total amounts are doubles. Blank numeric cells, including early `congestion_surcharge` values, become null. CSV parsing uses FAILFAST for malformed nonblank values; validation and cleaning remain separate team stages. The zone lookup and shapefile are retained as raw reference data but are not loaded by this stage.
+
+The pipeline writes Snappy Parquet to `data/bronze/raw/`, reads it back, and compares its schema and row count with the input. It stops Spark on success or failure. `data/silver/` and `data/gold/` remain reserved for subsequent modules.

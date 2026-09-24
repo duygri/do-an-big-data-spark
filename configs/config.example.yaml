@@ -1,6 +1,12 @@
+input:
+  path: data/raw/nyc_taxi/yellow_tripdata_*.csv
+  format: csv
+  schema: yellow_taxi
+  header: true
+
 paths:
   raw: data/raw
-  bronze: data/bronze
+  bronze: data/bronze/raw
   silver: data/silver
   gold: data/gold
   reports: reports/generated
@@ -8,3 +14,4 @@ paths:
 spark:
   app_name: big-data-spark-pipeline
   master: local[*]
+  max_partition_bytes: 134217728

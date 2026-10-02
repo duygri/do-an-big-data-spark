@@ -50,7 +50,7 @@ def test_empty_input_rejected(tmp_path, spark):
         write_bronze(df, spark, str(tmp_path / "bronze"))
 
 
-def test_cli_stops_spark_on_failure(tmp_path):
+def test_cli_missing_input_does_not_change_spark_session(tmp_path):
     config = tmp_path / "config.yaml"
     config.write_text(
         "input:\n  path: does-not-exist.csv\n  format: csv\n"
@@ -60,6 +60,7 @@ def test_cli_stops_spark_on_failure(tmp_path):
         "spark:\n  app_name: failure-test\n  master: local[1]\n",
         encoding="utf-8",
     )
+    active_before = SparkSession.getActiveSession()
     with pytest.raises(FileNotFoundError):
         run(config)
-    assert SparkSession.getActiveSession() is None
+    assert SparkSession.getActiveSession() is active_before

@@ -46,8 +46,8 @@ scripts/             # Reproducible helper scripts
    pip install -r requirements.txt
    ```
 
-4. Place the NYC yellow taxi CSV files in `data/raw/nyc_taxi/`. The local dataset and generated Parquet are excluded from Git.
-5. Copy `configs/config.example.yaml` to `configs/config.yaml` and adjust local paths. The example reads all 18 monthly CSVs from 2019-01 through 2020-06. Use a single file path to run a smaller trial.
+4. Place the six NYC yellow taxi CSV files for January–June 2020 in `data/raw/nyc_taxi/`. The local dataset and generated Parquet are excluded from Git; any 2019 files can remain there but are not read.
+5. Copy `configs/config.example.yaml` to `configs/config.yaml` and adjust local paths. The pipeline requires exactly `yellow_tripdata_2020-01.csv` through `yellow_tripdata_2020-06.csv` in the input selection and rejects missing or extra months before Spark starts.
 6. Run ingestion, Bronze, cleaning, and Silver validation:
 
    ```bash

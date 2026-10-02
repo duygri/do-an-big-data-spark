@@ -1,5 +1,5 @@
 input:
-  path: data/raw/nyc_taxi/yellow_tripdata_*.csv
+  path: data/raw/nyc_taxi/yellow_tripdata_2020-0[1-6].csv
   format: csv
   schema: yellow_taxi
   header: true

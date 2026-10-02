@@ -92,16 +92,17 @@ def test_pipeline_rejects_other_schema_before_spark(tmp_path):
 
 
 def test_cli_runs_ingestion_through_silver(tmp_path, spark):
-    csv = tmp_path / "taxi.csv"
-    csv.write_text(
-        ",".join(YELLOW_TAXI_SCHEMA.fieldNames()) + "\n"
-        "1,2020-04-01 10:00:00,2020-04-01 10:15:00,,2.5,1, N ,10,20,1,-5,0,0.5,0,0,0.3,-4.2,\n",
-        encoding="utf-8",
-    )
+    for month in range(1, 7):
+        csv = tmp_path / f"yellow_tripdata_2020-{month:02d}.csv"
+        csv.write_text(
+            ",".join(YELLOW_TAXI_SCHEMA.fieldNames()) + "\n"
+            f"1,2020-{month:02d}-01 10:00:00,2020-{month:02d}-01 10:15:00,,2.5,1, N ,10,20,1,-5,0,0.5,0,0,0.3,-4.2,\n",
+            encoding="utf-8",
+        )
     config = tmp_path / "pipeline.yaml"
     config.write_text(
         "input:\n"
-        f"  path: {csv.as_posix()}\n"
+        f"  path: {(tmp_path / 'yellow_tripdata_2020-0[1-6].csv').as_posix()}\n"
         "  format: csv\n  schema: yellow_taxi\n  header: true\n"
         "paths:\n"
         f"  bronze: {(tmp_path / 'bronze').as_posix()}\n"
@@ -110,6 +111,6 @@ def test_cli_runs_ingestion_through_silver(tmp_path, spark):
         "spark:\n  master: local[1]\n  app_name: cleaning-cli-test\n",
         encoding="utf-8",
     )
-    assert run(config) == 1
+    assert run(config) == 6
     assert (tmp_path / "reports" / "taxi_quality.json").is_file()
     assert SparkSession.getActiveSession() is None

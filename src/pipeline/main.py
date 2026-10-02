@@ -13,6 +13,7 @@ from src.ingestion.bronze import write_bronze
 from src.ingestion.reader import read_raw
 from src.ingestion.schema import YELLOW_TAXI_SCHEMA
 from src.cleaning.silver import clean_to_silver
+from src.pipeline.taxi_inputs import validate_taxi_inputs
 
 LOG = logging.getLogger(__name__)
 
@@ -44,6 +45,7 @@ def run(config_path: Path) -> int:
         raise ValueError("Input, Bronze, Silver, and report paths are required")
     if input_config.get("schema") != "yellow_taxi":
         raise ValueError("Cleaning currently supports only input.schema: yellow_taxi")
+    input_files = validate_taxi_inputs(raw_path, file_format)
     spark = None
     try:
         builder = SparkSession.builder.appName(spark_config.get("app_name", "big-data-spark-pipeline"))
@@ -52,6 +54,7 @@ def run(config_path: Path) -> int:
             builder = builder.config("spark.sql.files.maxPartitionBytes", spark_config["max_partition_bytes"])
         spark = builder.getOrCreate()
         LOG.info("Stage ingest: %s (%s)", raw_path, file_format)
+        LOG.info("Selected taxi files: %s", [path.name for path in input_files])
         schema = YELLOW_TAXI_SCHEMA if input_config.get("schema") == "yellow_taxi" else None
         df = read_raw(
             spark, raw_path, file_format=file_format, schema=schema,

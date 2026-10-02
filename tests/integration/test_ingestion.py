@@ -54,7 +54,9 @@ def test_cli_stops_spark_on_failure(tmp_path):
     config = tmp_path / "config.yaml"
     config.write_text(
         "input:\n  path: does-not-exist.csv\n  format: csv\n"
-        "paths:\n  bronze: unused-bronze\n"
+        "  schema: yellow_taxi\n"
+        "paths:\n  bronze: unused-bronze\n  silver: unused-silver\n"
+        "  reports: unused-reports\n"
         "spark:\n  app_name: failure-test\n  master: local[1]\n",
         encoding="utf-8",
     )

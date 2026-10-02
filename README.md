@@ -48,13 +48,13 @@ scripts/             # Reproducible helper scripts
 
 4. Place the NYC yellow taxi CSV files in `data/raw/nyc_taxi/`. The local dataset and generated Parquet are excluded from Git.
 5. Copy `configs/config.example.yaml` to `configs/config.yaml` and adjust local paths. The example reads all 18 monthly CSVs from 2019-01 through 2020-06. Use a single file path to run a smaller trial.
-6. Run the ingestion and Bronze stages:
+6. Run ingestion, Bronze, cleaning, and Silver validation:
 
    ```bash
    python -m src.pipeline.main --config configs/config.yaml
    ```
 
-   The command logs the schema, two sample rows, and verified Bronze row count. Bronze is overwritten on each run. Cleaning, transformation, and aggregation will be connected when those team modules are available. See [ingestion details](docs/ingestion.md).
+   The command logs the schema, sample rows, and row counts for each stage. Bronze and Silver are overwritten on each run. Quality reports appear in `reports/generated/`. Transformation and aggregation will be connected when those team modules are available. See [ingestion details](docs/ingestion.md) and [cleaning policy](docs/cleaning-quality.md).
 
 ## Contribution workflow
 

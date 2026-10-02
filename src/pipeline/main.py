@@ -1,4 +1,4 @@
-"""CLI entry point for the currently available ingestion and Bronze stages."""
+"""CLI entry point for NYC taxi ingestion, Bronze, and Silver cleaning."""
 
 from __future__ import annotations
 
@@ -12,6 +12,7 @@ from pyspark.sql import SparkSession
 from src.ingestion.bronze import write_bronze
 from src.ingestion.reader import read_raw
 from src.ingestion.schema import YELLOW_TAXI_SCHEMA
+from src.cleaning.silver import clean_to_silver
 
 LOG = logging.getLogger(__name__)
 
@@ -35,10 +36,14 @@ def run(config_path: Path) -> int:
         raw_path = str(input_config["path"])
         file_format = str(input_config["format"]).lower()
         bronze_path = str(paths["bronze"])
+        silver_path = str(paths["silver"])
+        report_path = str(paths["reports"])
     except (KeyError, TypeError) as exc:
         raise ValueError(f"Missing or invalid configuration field: {exc}") from exc
-    if not raw_path or not bronze_path:
-        raise ValueError("Input and Bronze output paths are required")
+    if not raw_path or not bronze_path or not silver_path or not report_path:
+        raise ValueError("Input, Bronze, Silver, and report paths are required")
+    if input_config.get("schema") != "yellow_taxi":
+        raise ValueError("Cleaning currently supports only input.schema: yellow_taxi")
     spark = None
     try:
         builder = SparkSession.builder.appName(spark_config.get("app_name", "big-data-spark-pipeline"))
@@ -57,8 +62,10 @@ def run(config_path: Path) -> int:
         LOG.info("Stage bronze: %s", bronze_path)
         count = write_bronze(df, spark, bronze_path)
         LOG.info("Stage bronze complete: %d rows verified", count)
-        LOG.info("Cleaning, transformation, and aggregation await their team modules")
-        return count
+        bronze = spark.read.parquet(bronze_path)
+        report = clean_to_silver(bronze, spark, silver_path, report_path)
+        LOG.info("Transformation and aggregation await their team modules")
+        return report["stage_counts"]["silver"]
     finally:
         if spark is not None:
             spark.stop()

@@ -21,24 +21,26 @@ def clean_to_silver(
     validate_schema(bronze)
     cached = []
     try:
-        bronze = bronze.persist(StorageLevel.MEMORY_AND_DISK)
+        # The full NYC taxi input exceeds the local JVM heap when cached in memory.
+        # Keep reusable stages on disk so local runs can process the full dataset.
+        bronze = bronze.persist(StorageLevel.DISK_ONLY)
         cached.append(bronze)
         counts = {"bronze": bronze.count()}
         if counts["bronze"] == 0:
             raise ValueError("Bronze contains no rows")
         before_nulls = null_counts(bronze)
         LOG.info("Stage missing values: %d input rows", counts["bronze"])
-        required = remove_missing_required(bronze).persist(StorageLevel.MEMORY_AND_DISK)
+        required = remove_missing_required(bronze).persist(StorageLevel.DISK_ONLY)
         cached.append(required)
         counts["after_missing"] = required.count()
         LOG.info("Stage missing values: %d rows retained", counts["after_missing"])
         LOG.info("Stage deduplication")
-        deduped = remove_exact_duplicates(required).persist(StorageLevel.MEMORY_AND_DISK)
+        deduped = remove_exact_duplicates(required).persist(StorageLevel.DISK_ONLY)
         cached.append(deduped)
         counts["after_deduplication"] = deduped.count()
         LOG.info("Stage deduplication: %d rows retained", counts["after_deduplication"])
         LOG.info("Stage normalization")
-        normalized = normalize_taxi(deduped).persist(StorageLevel.MEMORY_AND_DISK)
+        normalized = normalize_taxi(deduped).persist(StorageLevel.DISK_ONLY)
         cached.append(normalized)
         counts["silver"] = normalized.count()
         LOG.info("Stage Silver write: %s", silver_path)

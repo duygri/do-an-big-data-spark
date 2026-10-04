@@ -1,8 +1,8 @@
 # Pipeline nhập dữ liệu taxi vàng New York bằng PySpark
 
-Dự án môn **Nhập dữ liệu lớn**, xây dựng pipeline batch để nhập và xử lý dữ liệu chuyến taxi vàng tại New York bằng Python và Apache Spark (PySpark). Pipeline hiện chuyển dữ liệu CSV qua hai lớp **Bronze** và **Silver**, kiểm tra chất lượng dữ liệu, rồi lưu kết quả dưới dạng Parquet để chuẩn bị cho các bước phân tích tiếp theo.
+Dự án môn **Nhập dữ liệu lớn**, xây dựng pipeline batch để nhập và xử lý dữ liệu chuyến taxi vàng tại New York bằng Python và Apache Spark (PySpark). Pipeline đọc dữ liệu CSV qua Bronze, làm sạch sang Silver, tạo đặc trưng chuyến đi, bổ sung nhãn khu vực đón/trả và ghi Parquet đã xử lý vào Gold.
 
-> **Trạng thái:** Đã có các bước đọc dữ liệu, ghi Bronze, làm sạch sang Silver và xuất báo cáo chất lượng. Lớp Gold và các phép tổng hợp phân tích đang nằm trong kế hoạch phát triển.
+> **Trạng thái:** Pipeline đã có bước đọc dữ liệu, Bronze, Silver, báo cáo chất lượng, feature engineering, zone enrichment và Gold Parquet. Các kết quả tổng hợp phân tích vẫn đang trong kế hoạch phát triển.
 
 ## Mục tiêu đề tài
 
@@ -18,13 +18,13 @@ Dự án môn **Nhập dữ liệu lớn**, xây dựng pipeline batch để nh�
 - Quãng đường, tiền cước, tiền tip và phương thức thanh toán phân bố ra sao?
 - Các chỉ số trên khác nhau thế nào giữa năm 2019 và sáu tháng đầu năm 2020?
 
-Đây là các hướng phân tích dự kiến; pipeline hiện chưa tạo lớp Gold hay kết quả tổng hợp cho những câu hỏi này.
+Đây là các hướng phân tích dự kiến. Gold hiện lưu dữ liệu chuyến đã tạo đặc trưng và bổ sung nhãn khu vực; pipeline chưa tạo kết quả tổng hợp cho các câu hỏi trên.
 
 ## Dữ liệu
 
 Nguồn dữ liệu chính là bộ [New York Yellow Taxi Trip Data trên Kaggle](https://www.kaggle.com/datasets/microize/newyork-yellow-taxi-trip-data-2020-2019), gồm 18 tệp CSV theo tháng từ **01/2019 đến 06/2020**. Bộ dữ liệu do NYC Taxi & Limousine Commission (TLC) công bố; xem thêm [trang dữ liệu chuyến đi của TLC](https://www.nyc.gov/site/tlc/about/tlc-trip-record-data.page).
 
-Các trường được pipeline sử dụng gồm thời điểm đón/trả, số hành khách, quãng đường, mã khu vực đón/trả, loại thanh toán và các khoản cước/phụ phí. Schema hiện khai báo 18 cột trong `src/ingestion/schema.py`. Bộ dữ liệu Kaggle còn có bảng tra cứu khu vực và dữ liệu vùng; pipeline hiện tại chưa đọc các tệp tham chiếu này.
+Các trường được pipeline sử dụng gồm thời điểm đón/trả, số hành khách, quãng đường, mã khu vực đón/trả, loại thanh toán và các khoản cước/phụ phí. Schema hiện khai báo 18 cột trong `src/ingestion/schema.py`. Pipeline dùng bảng `taxi+_zone_lookup.csv` để bổ sung tên khu vực; dữ liệu shapefile chưa được đọc.
 
 Tải dữ liệu từ Kaggle, giải nén và đặt các tệp `yellow_tripdata_*.csv` vào `data/raw/nyc_taxi/`. Dữ liệu gốc và dữ liệu sinh ra không được đưa vào Git vì dung lượng lớn.
 
@@ -45,7 +45,7 @@ data/silver/cleaned/   Làm sạch và kiểm tra chất lượng
    └── reports/generated/taxi_quality.md
    │
    ▼
-Gold và phân tích tổng hợp (dự kiến)
+data/gold/taxi_trips/  Feature engineering + zone enrichment, Parquet theo năm/tháng đón
 ```
 
 ### Các bước làm sạch hiện có
@@ -108,7 +108,7 @@ Các đường dẫn trong cấu hình được tính từ thư mục hiện hà
 | `data/silver/cleaned/` | Dữ liệu sau các bước làm sạch hiện có. |
 | `reports/generated/taxi_quality.json` | Báo cáo chất lượng dạng JSON. |
 | `reports/generated/taxi_quality.md` | Tóm tắt báo cáo chất lượng dạng Markdown. |
-| `data/gold/` | Vị trí dành cho dữ liệu đã tổng hợp; pipeline chưa ghi dữ liệu vào đây. |
+| `data/gold/taxi_trips/` | Chuyến taxi đã tạo đặc trưng và bổ sung nhãn khu vực, phân vùng theo năm/tháng đón. |
 
 ## Cấu trúc repository
 
@@ -122,7 +122,7 @@ src/
 ├── ingestion/            Đọc dữ liệu, schema và ghi Bronze
 ├── cleaning/             Làm sạch, kiểm tra và ghi Silver
 ├── pipeline/             Điểm chạy pipeline
-├── transformation/       Khung cho bước biến đổi tiếp theo
+├── transformation/       Tạo đặc trưng chuyến đi, nối bảng taxi zone và ghi Gold
 └── aggregation/          Khung cho bước tổng hợp tiếp theo
 tests/integration/        Kiểm thử tích hợp bước nhập liệu và làm sạch
 scripts/                  Vị trí cho các script hỗ trợ
@@ -141,5 +141,8 @@ pytest -q
 - [Kiến trúc pipeline](docs/architecture.md)
 - [Chi tiết bước nhập dữ liệu và Bronze](docs/ingestion.md)
 - [Quy tắc làm sạch và báo cáo chất lượng](docs/cleaning-quality.md)
+- [Định nghĩa feature taxi](docs/transformation-features.md)
+- [Zone enrichment](docs/transformation-joins.md)
+- [Processed Parquet](docs/processed-output.md)
 - [Bộ dữ liệu trên Kaggle](https://www.kaggle.com/datasets/microize/newyork-yellow-taxi-trip-data-2020-2019)
 - [NYC TLC Trip Record Data](https://www.nyc.gov/site/tlc/about/tlc-trip-record-data.page)

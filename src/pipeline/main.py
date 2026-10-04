@@ -50,6 +50,7 @@ def run(config_path: Path) -> int:
     if input_config.get("schema") != "yellow_taxi":
         raise ValueError("Cleaning currently supports only input.schema: yellow_taxi")
     spark = None
+    join_result = None
     try:
         builder = SparkSession.builder.appName(spark_config.get("app_name", "big-data-spark-pipeline"))
         builder = builder.master(spark_config.get("master", "local[*]"))
@@ -117,9 +118,13 @@ def run(config_path: Path) -> int:
         )
         return write_report.row_count
     finally:
-        if spark is not None:
-            spark.stop()
-            LOG.info("Spark session stopped")
+        try:
+            if join_result is not None:
+                join_result.unpersist()
+        finally:
+            if spark is not None:
+                spark.stop()
+                LOG.info("Spark session stopped")
 
 
 def main() -> None:

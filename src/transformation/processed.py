@@ -3,9 +3,11 @@
 from dataclasses import dataclass
 
 from pyspark.sql import DataFrame, SparkSession
+from pyspark.sql.functions import col, lit, monotonically_increasing_id, pmod
 
 DEFAULT_PARTITION_COLUMNS = ("pickup_year", "pickup_month")
 DEFAULT_MAX_RECORDS_PER_FILE = 1_000_000
+DEFAULT_SALT_BUCKETS = 8
 
 
 @dataclass(frozen=True)
@@ -32,9 +34,9 @@ def write_processed_taxi(
 ) -> ProcessedWriteReport:
     """Overwrite Snappy Parquet, partition by pickup month, and verify read-back.
 
-    Repartitioning on the low-cardinality partition keys co-locates each month
-    before writing. ``maxRecordsPerFile`` caps large monthly files without
-    creating partitions for individual taxi zones or trips.
+    A temporary row salt lets each month use multiple shuffle tasks; only the
+    requested low-cardinality columns are written as directory partitions.
+    ``maxRecordsPerFile`` caps large files without partitioning by trip or zone.
     """
     destination = str(path).strip()
     if not destination:
@@ -54,7 +56,14 @@ def write_processed_taxi(
     if expected_rows == 0:
         raise ValueError("Refusing to write an empty processed taxi dataset")
 
-    output = df.repartition(*partition_columns)
+    shuffle_partitions = int(spark.conf.get("spark.sql.shuffle.partitions"))
+    salt_buckets = min(DEFAULT_SALT_BUCKETS, shuffle_partitions)
+    salt = pmod(monotonically_increasing_id(), lit(salt_buckets))
+    output = df.repartition(
+        shuffle_partitions,
+        *[col(name) for name in partition_columns],
+        salt,
+    )
     (
         output.write.mode("overwrite")
         .option("compression", "snappy")

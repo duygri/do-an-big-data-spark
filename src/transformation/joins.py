@@ -1,9 +1,10 @@
 """Join NYC taxi trips with the official taxi-zone lookup dimension."""
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from pyspark.sql import DataFrame, SparkSession
+from pyspark import StorageLevel
 from pyspark.sql.functions import broadcast, col, count, lit, when
 from pyspark.sql.types import IntegerType, StringType, StructField, StructType
 
@@ -27,7 +28,7 @@ ZONE_OUTPUT_COLUMNS = (
 
 @dataclass(frozen=True)
 class TaxiZoneJoinResult:
-    """Enriched trips and join-quality counts for pipeline logging."""
+    """Enriched trips, join-quality counts, and cache lifecycle for the caller."""
 
     dataframe: DataFrame
     input_rows: int
@@ -35,6 +36,11 @@ class TaxiZoneJoinResult:
     unmatched_pickup_rows: int
     unmatched_dropoff_rows: int
     duplicate_lookup_keys: int
+    _cached_dataframe: DataFrame = field(repr=False, compare=False)
+
+    def unpersist(self) -> None:
+        """Release the disk cache after the caller finishes consuming the result."""
+        self._cached_dataframe.unpersist()
 
 
 def read_taxi_zone_lookup(spark: SparkSession, path: str | Path) -> DataFrame:
@@ -145,25 +151,31 @@ def join_taxi_zones(trips: DataFrame, zone_lookup: DataFrame) -> TaxiZoneJoinRes
 
     pickup_unmatched = col("PULocationID").isNotNull() & col("_pickup_lookup_matched").isNull()
     dropoff_unmatched = col("DOLocationID").isNotNull() & col("_dropoff_lookup_matched").isNull()
-    metrics = enriched.agg(
-        count(lit(1)).alias("output_rows"),
-        count(when(pickup_unmatched, lit(1))).alias("unmatched_pickup_rows"),
-        count(when(dropoff_unmatched, lit(1))).alias("unmatched_dropoff_rows"),
-    ).first()
-    output_rows = metrics["output_rows"]
-    if output_rows != input_rows:
-        raise RuntimeError(
-            "Taxi zone join changed the trip row count: "
-            f"{input_rows} input rows, {output_rows} output rows"
+    cached_enriched = enriched.persist(StorageLevel.DISK_ONLY)
+    try:
+        metrics = cached_enriched.agg(
+            count(lit(1)).alias("output_rows"),
+            count(when(pickup_unmatched, lit(1))).alias("unmatched_pickup_rows"),
+            count(when(dropoff_unmatched, lit(1))).alias("unmatched_dropoff_rows"),
+        ).first()
+        output_rows = metrics["output_rows"]
+        if output_rows != input_rows:
+            raise RuntimeError(
+                "Taxi zone join changed the trip row count: "
+                f"{input_rows} input rows, {output_rows} output rows"
+            )
+
+        return TaxiZoneJoinResult(
+            dataframe=cached_enriched.drop(
+                "_pickup_lookup_matched", "_dropoff_lookup_matched"
+            ),
+            input_rows=input_rows,
+            output_rows=output_rows,
+            unmatched_pickup_rows=metrics["unmatched_pickup_rows"],
+            unmatched_dropoff_rows=metrics["unmatched_dropoff_rows"],
+            duplicate_lookup_keys=duplicate_key_count,
+            _cached_dataframe=cached_enriched,
         )
-
-    enriched = enriched.drop("_pickup_lookup_matched", "_dropoff_lookup_matched")
-
-    return TaxiZoneJoinResult(
-        dataframe=enriched,
-        input_rows=input_rows,
-        output_rows=output_rows,
-        unmatched_pickup_rows=metrics["unmatched_pickup_rows"],
-        unmatched_dropoff_rows=metrics["unmatched_dropoff_rows"],
-        duplicate_lookup_keys=duplicate_key_count,
-    )
+    except Exception:
+        cached_enriched.unpersist()
+        raise

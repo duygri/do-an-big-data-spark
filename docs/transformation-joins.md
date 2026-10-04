@@ -1,0 +1,7 @@
+# NYC taxi zone enrichment
+
+`join_taxi_zones()` enriches the feature-engineered Silver trips with the NYC Taxi and Limousine Commission zone lookup. It uses `PULocationID` and `DOLocationID` to add pickup/dropoff borough, zone, and service-zone labels. Both joins are left joins so trips remain in the dataset even when a location ID has no lookup entry.
+
+The lookup key is `LocationID`. The join module validates the required columns, reports duplicate lookup IDs with a sample of offending keys, and refuses to proceed with duplicate keys because they could multiply trip rows. It compares trip counts before and after the joins and records the number of non-null pickup/dropoff IDs without a matching zone label. The small lookup is broadcast for both joins to avoid shuffling the much larger trip dataset.
+
+Put the official `taxi+_zone_lookup.csv` beside the raw monthly CSV files or set `input.zone_lookup_path` in the pipeline config. The lookup uses the explicit `LocationID`, `Borough`, `Zone`, and `service_zone` schema. The enriched output includes `pickup_borough`, `pickup_zone`, `pickup_service_zone`, `dropoff_borough`, `dropoff_zone`, and `dropoff_service_zone`.

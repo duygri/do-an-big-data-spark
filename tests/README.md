@@ -5,8 +5,14 @@
 - Use small files under `data/sample/` so tests remain reproducible.
 - Do not commit large raw or generated datasets.
 
-Run the test suite with:
+Run the focused NYC taxi feature checks with:
 
 ```bash
-pytest -q
+python -m pytest -q tests/integration/test_transformation.py
+```
+
+Run the full test suite with:
+
+```bash
+python -m pytest -q
 ```

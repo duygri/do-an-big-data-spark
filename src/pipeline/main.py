@@ -1,4 +1,4 @@
-"""CLI entry point for NYC taxi ingestion, Bronze, and Silver cleaning."""
+"""CLI entry point for the NYC taxi raw-to-processed pipeline."""
 
 from __future__ import annotations
 
@@ -13,6 +13,9 @@ from src.ingestion.bronze import write_bronze
 from src.ingestion.reader import read_raw
 from src.ingestion.schema import YELLOW_TAXI_SCHEMA
 from src.cleaning.silver import clean_to_silver
+from src.transformation.joins import join_taxi_zones, read_taxi_zone_lookup
+from src.transformation.processed import write_processed_taxi
+from src.transformation.taxi import FEATURE_COLUMNS, engineer_taxi_features
 
 LOG = logging.getLogger(__name__)
 
@@ -38,16 +41,22 @@ def run(config_path: Path) -> int:
         bronze_path = str(paths["bronze"])
         silver_path = str(paths["silver"])
         report_path = str(paths["reports"])
+        gold_path = str(paths.get("gold", Path(silver_path).parent / "gold"))
+        processed_path = str(paths.get("processed_taxi", Path(gold_path) / "taxi_trips"))
     except (KeyError, TypeError) as exc:
         raise ValueError(f"Missing or invalid configuration field: {exc}") from exc
-    if not raw_path or not bronze_path or not silver_path or not report_path:
-        raise ValueError("Input, Bronze, Silver, and report paths are required")
+    if not raw_path or not bronze_path or not silver_path or not report_path or not processed_path:
+        raise ValueError("Input, Bronze, Silver, processed, and report paths are required")
     if input_config.get("schema") != "yellow_taxi":
         raise ValueError("Cleaning currently supports only input.schema: yellow_taxi")
     spark = None
     try:
         builder = SparkSession.builder.appName(spark_config.get("app_name", "big-data-spark-pipeline"))
         builder = builder.master(spark_config.get("master", "local[*]"))
+        builder = builder.config(
+            "spark.sql.session.timeZone",
+            spark_config.get("session_timezone", "America/New_York"),
+        )
         if "max_partition_bytes" in spark_config:
             builder = builder.config("spark.sql.files.maxPartitionBytes", spark_config["max_partition_bytes"])
         spark = builder.getOrCreate()
@@ -64,8 +73,49 @@ def run(config_path: Path) -> int:
         LOG.info("Stage bronze complete: %d rows verified", count)
         bronze = spark.read.parquet(bronze_path)
         report = clean_to_silver(bronze, spark, silver_path, report_path)
-        LOG.info("Transformation and aggregation await their team modules")
-        return report["stage_counts"]["silver"]
+        silver = spark.read.parquet(silver_path)
+        LOG.info("Stage feature engineering")
+        featured = engineer_taxi_features(silver)
+        LOG.info("Feature schema: %s", featured.schema.simpleString())
+        LOG.info(
+            "Feature sample: %s",
+            featured.select(*FEATURE_COLUMNS).limit(2).toJSON().collect(),
+        )
+
+        zone_lookup_path = input_config.get("zone_lookup_path")
+        if not zone_lookup_path:
+            conventional_lookup = Path(raw_path).parent / "taxi+_zone_lookup.csv"
+            if conventional_lookup.is_file():
+                zone_lookup_path = str(conventional_lookup)
+        if zone_lookup_path:
+            LOG.info("Stage zone enrichment: %s", zone_lookup_path)
+            zone_lookup = read_taxi_zone_lookup(spark, zone_lookup_path)
+            join_result = join_taxi_zones(featured, zone_lookup)
+            featured = join_result.dataframe
+            LOG.info(
+                "Zone join rows: %d before, %d after; unmatched pickup=%d, "
+                "unmatched dropoff=%d; duplicate lookup keys=%d",
+                join_result.input_rows,
+                join_result.output_rows,
+                join_result.unmatched_pickup_rows,
+                join_result.unmatched_dropoff_rows,
+                join_result.duplicate_lookup_keys,
+            )
+        else:
+            LOG.warning(
+                "Taxi zone enrichment skipped: set input.zone_lookup_path or place "
+                "taxi+_zone_lookup.csv beside the raw taxi CSV files"
+            )
+
+        LOG.info("Stage processed Parquet write: %s", processed_path)
+        write_report = write_processed_taxi(featured, spark, processed_path)
+        LOG.info(
+            "Processed Parquet verified: %d rows; schema=%s; partitions=%s",
+            write_report.row_count,
+            write_report.schema,
+            write_report.partition_columns,
+        )
+        return write_report.row_count
     finally:
         if spark is not None:
             spark.stop()

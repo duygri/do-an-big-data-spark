@@ -48,13 +48,13 @@ scripts/             # Reproducible helper scripts
 
 4. Place the NYC yellow taxi CSV files in `data/raw/nyc_taxi/`. The local dataset and generated Parquet are excluded from Git.
 5. Copy `configs/config.example.yaml` to `configs/config.yaml` and adjust local paths. The example reads all 18 monthly CSVs from 2019-01 through 2020-06. Use a single file path to run a smaller trial.
-6. Run ingestion, Bronze, cleaning, and Silver validation:
+6. Run ingestion, Bronze, cleaning, taxi feature engineering, zone enrichment, and processed Parquet output:
 
    ```bash
    python -m src.pipeline.main --config configs/config.yaml
    ```
 
-   The command logs the schema, sample rows, and row counts for each stage. Bronze and Silver are overwritten on each run. Quality reports appear in `reports/generated/`. Transformation and aggregation will be connected when those team modules are available. See [ingestion details](docs/ingestion.md) and [cleaning policy](docs/cleaning-quality.md).
+   The command logs schemas, sample rows, and join/read-back counts. Bronze, Silver, and `data/gold/taxi_trips/` are overwritten on each run. The pipeline joins pickup/dropoff IDs to the NYC taxi-zone lookup and writes the enriched feature data as Snappy Parquet partitioned by pickup year and month. Set `input.zone_lookup_path` if the lookup is stored elsewhere. Quality reports appear in `reports/generated/`. See [ingestion details](docs/ingestion.md), [cleaning policy](docs/cleaning-quality.md), [feature definitions](docs/transformation-features.md), [zone joins](docs/transformation-joins.md), and [processed output](docs/processed-output.md).
 
 ## Contribution workflow
 

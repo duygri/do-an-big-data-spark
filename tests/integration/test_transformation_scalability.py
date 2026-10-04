@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 from pyspark.sql import SparkSession
-from pyspark.sql.types import IntegerType, StructField, StructType
+from pyspark.sql.types import IntegerType, LongType, StructField, StructType
 
 from src.transformation.joins import TAXI_ZONE_LOOKUP_SCHEMA, join_taxi_zones
 from src.transformation.processed import write_processed_taxi
@@ -27,7 +27,13 @@ def test_processed_writer_spreads_one_month_across_multiple_tasks(spark, tmp_pat
     row_count = 128
     source = spark.createDataFrame(
         [(row_id, 2020, 4) for row_id in range(row_count)],
-        ["trip_id", "pickup_year", "pickup_month"],
+        StructType(
+            [
+                StructField("trip_id", LongType(), False),
+                StructField("pickup_year", IntegerType(), False),
+                StructField("pickup_month", IntegerType(), False),
+            ]
+        ),
     )
     destination = Path(tmp_path) / "processed"
 

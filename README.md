@@ -66,6 +66,7 @@ Bronze và Silver được ghi đè khi chạy lại pipeline. Báo cáo chứa 
 - Java 11 hoặc Java 17
 - Parquet với nén Snappy
 - Matplotlib để tạo biểu đồ từ các bảng tổng hợp nhỏ
+- Pandas và psutil cho benchmark so sánh engine
 - PyYAML để đọc cấu hình YAML
 
 ## Cài đặt và chạy
@@ -163,5 +164,6 @@ pytest -q
 - [Zone enrichment](docs/transformation-joins.md)
 - [Processed Parquet](docs/processed-output.md)
 - [Taxi aggregations và báo cáo](docs/aggregations.md)
+- [Benchmark Spark và Pandas](docs/benchmarking.md)
 - [Bộ dữ liệu trên Kaggle](https://www.kaggle.com/datasets/microize/newyork-yellow-taxi-trip-data-2020-2019)
 - [NYC TLC Trip Record Data](https://www.nyc.gov/site/tlc/about/tlc-trip-record-data.page)

@@ -1,6 +1,7 @@
 """Gold table and report export contracts for taxi aggregations."""
 
 import csv
+import os
 from datetime import datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -86,7 +87,14 @@ def export_taxi_aggregations(*args, **kwargs):
 
 @pytest.fixture
 def parquet_round_trip(monkeypatch):
-    """Keep schema/count verification real while isolating unavailable winutils I/O."""
+    """Use real Parquet I/O except on Windows hosts without winutils."""
+    hadoop_home = os.environ.get("HADOOP_HOME") or os.environ.get("hadoop.home.dir")
+    has_winutils = bool(
+        hadoop_home and (Path(hadoop_home) / "bin" / "winutils.exe").is_file()
+    )
+    if os.name != "nt" or has_winutils:
+        return None
+
     written_frames = {}
 
     def write_parquet(writer, path):
@@ -113,7 +121,8 @@ def test_export_writes_each_gold_table_and_csv(spark, tmp_path, parquet_round_tr
     assert list(report.table_row_counts) == TABLE_NAMES
     assert set(report.parquet_paths) == set(TABLE_NAMES)
     assert set(report.csv_paths) == set(TABLE_NAMES)
-    assert set(parquet_round_trip) == set(report.parquet_paths.values())
+    if parquet_round_trip is not None:
+        assert set(parquet_round_trip) == set(report.parquet_paths.values())
     for name in TABLE_NAMES:
         restored = spark.read.parquet(report.parquet_paths[name])
         assert restored.columns == getattr(tables, name).columns

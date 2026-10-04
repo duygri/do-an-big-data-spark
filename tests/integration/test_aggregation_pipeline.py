@@ -1,6 +1,7 @@
 """Pipeline integration for taxi aggregations and export defaults."""
 
 import csv
+import os
 from pathlib import Path
 
 import pytest
@@ -88,6 +89,10 @@ aggregation:
         encoding="utf-8",
     )
 
+    hadoop_home = os.environ.get("HADOOP_HOME") or os.environ.get("hadoop.home.dir")
+    has_winutils = bool(
+        hadoop_home and (Path(hadoop_home) / "bin" / "winutils.exe").is_file()
+    )
     written_frames = {}
 
     def write_parquet(writer, path):
@@ -96,8 +101,9 @@ aggregation:
     def read_parquet(_reader, path, *args, **kwargs):
         return written_frames[str(path)]
 
-    monkeypatch.setattr(DataFrameWriter, "parquet", write_parquet)
-    monkeypatch.setattr(DataFrameReader, "parquet", read_parquet)
+    if os.name == "nt" and not has_winutils:
+        monkeypatch.setattr(DataFrameWriter, "parquet", write_parquet)
+        monkeypatch.setattr(DataFrameReader, "parquet", read_parquet)
 
     persisted_frames = []
     unpersisted_frames = []
@@ -125,7 +131,10 @@ aggregation:
         "dropoff_zones", "trip_metric_stats", "payment_mix", "same_month_comparison",
     }
     assert row_count == 4
-    assert all(str(aggregate_root / name) in written_frames for name in expected_tables)
+    if os.name == "nt" and not has_winutils:
+        assert all(str(aggregate_root / name) in written_frames for name in expected_tables)
+    else:
+        assert all((aggregate_root / name).is_dir() for name in expected_tables)
     assert (analysis_root / "taxi_aggregation_report.md").is_file()
     assert (analysis_root / "csv" / "trips_by_month.csv").is_file()
     assert (analysis_root / "charts" / "monthly_trips.png").is_file()

@@ -5,10 +5,16 @@ from __future__ import annotations
 import argparse
 import csv
 import json
+import sys
 from dataclasses import asdict
 from pathlib import Path
 
 from pyspark.sql import SparkSession
+
+# Direct ``python scripts/...`` execution puts only ``scripts/`` on sys.path.
+repository_root = str(Path(__file__).resolve().parents[1])
+if repository_root not in sys.path:
+    sys.path.insert(0, repository_root)
 
 from src.aggregation.spark_benchmark import compare_aggregation_persistence
 

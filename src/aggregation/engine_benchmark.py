@@ -5,16 +5,20 @@ from __future__ import annotations
 import glob
 import hashlib
 import json
+import math
 import os
 import platform
 import threading
 import time
-from dataclasses import dataclass
+from bisect import bisect_left, bisect_right
+from dataclasses import dataclass, replace
+from datetime import timedelta
 from pathlib import Path
 from typing import Any, Sequence
 
 import pandas as pd
 import psutil
+from pyspark import StorageLevel
 from pyspark.sql import DataFrame, SparkSession
 from pyspark.sql.types import DoubleType, IntegerType, StringType, TimestampType
 
@@ -35,6 +39,16 @@ FINGERPRINT_TABLES = (
     "trip_metric_stats",
     "payment_mix",
 )
+TABLE_KEY_COLUMNS = {
+    "trips_by_month": ("pickup_year", "pickup_month"),
+    "pickup_zones": ("location_id",),
+    "dropoff_zones": ("location_id",),
+    "trip_metric_stats": ("metric_name",),
+    "payment_mix": ("payment_type",),
+}
+NUMERIC_RELATIVE_TOLERANCE = 1e-10
+NUMERIC_ABSOLUTE_TOLERANCE = 1e-8
+MEDIAN_RANK_ACCURACY = 10_000
 
 
 @dataclass(frozen=True)
@@ -142,7 +156,7 @@ def _canonical_value(value: Any) -> Any:
     if isinstance(value, int):
         return int(value)
     if isinstance(value, float):
-        return round(value, 8)
+        return float(value)
     if hasattr(value, "isoformat"):
         return value.isoformat(sep=" ")
     return value
@@ -163,11 +177,127 @@ def _fingerprint_records(tables: dict[str, list[dict[str, Any]]]) -> str:
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
-def _spark_fingerprint(tables: TaxiAggregationTables) -> str:
+def _spark_records(tables: TaxiAggregationTables) -> dict[str, list[dict[str, Any]]]:
     rows: dict[str, list[dict[str, Any]]] = {}
     for name in FINGERPRINT_TABLES:
         rows[name] = [row.asDict(recursive=True) for row in getattr(tables, name).collect()]
-    return _fingerprint_records(rows)
+    return rows
+
+
+def _numeric_values_equal(left: Any, right: Any) -> bool:
+    left = _canonical_value(left)
+    right = _canonical_value(right)
+    if left is None or right is None:
+        return left is right
+    if isinstance(left, bool) or isinstance(right, bool):
+        return left is right
+    if isinstance(left, (int, float)) and isinstance(right, (int, float)):
+        if isinstance(left, int) and isinstance(right, int):
+            return left == right
+        return math.isclose(
+            float(left),
+            float(right),
+            rel_tol=NUMERIC_RELATIVE_TOLERANCE,
+            abs_tol=NUMERIC_ABSOLUTE_TOLERANCE,
+        )
+    return left == right
+
+
+def _median_within_rank_tolerance(
+    spark_median: Any,
+    pandas_median: Any,
+    values: Sequence[Any],
+    *,
+    accuracy: int = MEDIAN_RANK_ACCURACY,
+) -> bool:
+    """Check Spark's approximation against the exact Pandas middle-value rank."""
+    sample = sorted(float(value) for value in values if not pd.isna(value))
+    spark_median = _canonical_value(spark_median)
+    pandas_median = _canonical_value(pandas_median)
+    if not sample:
+        return spark_median is None and pandas_median is None
+    if spark_median is None or pandas_median is None or accuracy < 1:
+        return False
+
+    median_rank = (len(sample) - 1) // 2
+    if not _numeric_values_equal(pandas_median, sample[median_rank]):
+        return False
+    rank_tolerance = max(1, math.ceil(len(sample) / accuracy))
+    spark_first_rank = bisect_left(sample, float(spark_median))
+    spark_last_rank = bisect_right(sample, float(spark_median)) - 1
+    if spark_first_rank > spark_last_rank:
+        return False
+    return (
+        spark_first_rank <= median_rank + rank_tolerance
+        and spark_last_rank >= median_rank - rank_tolerance
+    )
+
+
+def _assert_aggregate_equivalence(
+    spark_records: dict[str, list[dict[str, Any]]],
+    pandas_records: dict[str, list[dict[str, Any]]],
+    pandas_frame: pd.DataFrame,
+) -> None:
+    """Raise when discrete results differ or numeric results exceed their tolerances."""
+    if set(spark_records) != set(pandas_records):
+        raise RuntimeError("Spark and Pandas produced different taxi aggregation tables")
+
+    for table_name in FINGERPRINT_TABLES:
+        keys = TABLE_KEY_COLUMNS[table_name]
+        spark_rows = {
+            tuple(_canonical_value(row.get(column)) for column in keys): row
+            for row in spark_records[table_name]
+        }
+        pandas_rows = {
+            tuple(_canonical_value(row.get(column)) for column in keys): row
+            for row in pandas_records[table_name]
+        }
+        if spark_rows.keys() != pandas_rows.keys():
+            raise RuntimeError(
+                f"Spark and Pandas produced different row keys in {table_name}"
+            )
+
+        for row_key in spark_rows:
+            spark_row = spark_rows[row_key]
+            pandas_row = pandas_rows[row_key]
+            if spark_row.keys() != pandas_row.keys():
+                raise RuntimeError(
+                    f"Spark and Pandas produced different columns in {table_name}"
+                )
+            for column in spark_row:
+                spark_value = spark_row[column]
+                pandas_value = pandas_row[column]
+                if table_name == "trip_metric_stats" and column == "median_approx":
+                    metric = str(spark_row["metric_name"])
+                    values = pandas_frame[metric].dropna().tolist()
+                    matches = _median_within_rank_tolerance(
+                        spark_value, pandas_value, values
+                    )
+                else:
+                    matches = _numeric_values_equal(spark_value, pandas_value)
+                if not matches:
+                    raise RuntimeError(
+                        f"Spark and Pandas results differ at {table_name}"
+                        f"{row_key}.{column}: Spark={spark_value!r}, "
+                        f"Pandas={pandas_value!r}"
+                    )
+
+
+def _comparison_fingerprint(
+    spark_records: dict[str, list[dict[str, Any]]],
+    pandas_records: dict[str, list[dict[str, Any]]],
+) -> str:
+    """Hash the pair of outputs that passed the documented equivalence checks."""
+    evidence = {
+        "version": 1,
+        "numeric_relative_tolerance": NUMERIC_RELATIVE_TOLERANCE,
+        "numeric_absolute_tolerance": NUMERIC_ABSOLUTE_TOLERANCE,
+        "median_rank_accuracy": MEDIAN_RANK_ACCURACY,
+        "spark_output": _fingerprint_records(spark_records),
+        "pandas_output": _fingerprint_records(pandas_records),
+    }
+    payload = json.dumps(evidence, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
 def _pandas_clean(frame: pd.DataFrame) -> pd.DataFrame:
@@ -180,6 +310,11 @@ def _pandas_clean(frame: pd.DataFrame) -> pd.DataFrame:
         name = field.name
         if isinstance(field.dataType, TimestampType):
             frame[name] = pd.to_datetime(frame[name], errors="coerce")
+            frame[name] = frame[name].dt.tz_localize(
+                "America/New_York",
+                ambiguous=True,
+                nonexistent=timedelta(hours=1),
+            ).dt.tz_localize(None)
         elif isinstance(field.dataType, IntegerType):
             frame[name] = pd.to_numeric(frame[name], errors="coerce").astype("Int64")
         elif isinstance(field.dataType, DoubleType):
@@ -266,16 +401,14 @@ def _pandas_payment_mix(frame: pd.DataFrame) -> list[dict[str, Any]]:
     ]
 
 
-def _pandas_fingerprint(frame: pd.DataFrame) -> str:
-    return _fingerprint_records(
-        {
-            "trips_by_month": _pandas_monthly(frame),
-            "pickup_zones": _pandas_zones(frame, "PULocationID"),
-            "dropoff_zones": _pandas_zones(frame, "DOLocationID"),
-            "trip_metric_stats": _pandas_metric_stats(frame),
-            "payment_mix": _pandas_payment_mix(frame),
-        }
-    )
+def _pandas_records(frame: pd.DataFrame) -> dict[str, list[dict[str, Any]]]:
+    return {
+        "trips_by_month": _pandas_monthly(frame),
+        "pickup_zones": _pandas_zones(frame, "PULocationID"),
+        "dropoff_zones": _pandas_zones(frame, "DOLocationID"),
+        "trip_metric_stats": _pandas_metric_stats(frame),
+        "payment_mix": _pandas_payment_mix(frame),
+    }
 
 
 def _result(
@@ -339,15 +472,20 @@ def benchmark_spark_vs_pandas(
             .schema(YELLOW_TAXI_SCHEMA)
             .csv(files)
         )
-        cleaned = raw.na.drop(subset=list(REQUIRED_FIELDS)).dropDuplicates()
+        cleaned = raw.na.drop(subset=list(REQUIRED_FIELDS)).dropDuplicates().persist(
+            StorageLevel.DISK_ONLY
+        )
         input_rows = cleaned.count()
         spark_read_seconds = time.perf_counter() - read_started
 
-        aggregation_started = time.perf_counter()
-        featured = engineer_taxi_features(cleaned)
-        tables = aggregate_taxi_trips(featured)
-        spark_fingerprint = _spark_fingerprint(tables)
-        spark_aggregation_seconds = time.perf_counter() - aggregation_started
+        try:
+            aggregation_started = time.perf_counter()
+            featured = engineer_taxi_features(cleaned)
+            tables = aggregate_taxi_trips(featured)
+            spark_records = _spark_records(tables)
+            spark_aggregation_seconds = time.perf_counter() - aggregation_started
+        finally:
+            cleaned.unpersist(blocking=True)
         spark_total_seconds = time.perf_counter() - spark_total_started
     spark_result = _result(
         engine="spark",
@@ -360,7 +498,7 @@ def benchmark_spark_vs_pandas(
         total_seconds=spark_total_seconds,
         peak_rss_mb=spark_memory.peak_mb,
         spark_version=spark.version,
-        fingerprint=spark_fingerprint,
+        fingerprint="",
     )
 
     pandas_total_started = time.perf_counter()
@@ -375,7 +513,7 @@ def benchmark_spark_vs_pandas(
         pandas_read_seconds = time.perf_counter() - read_started
 
         aggregation_started = time.perf_counter()
-        pandas_fingerprint = _pandas_fingerprint(pandas_cleaned)
+        pandas_records = _pandas_records(pandas_cleaned)
         pandas_aggregation_seconds = time.perf_counter() - aggregation_started
         pandas_total_seconds = time.perf_counter() - pandas_total_started
     pandas_result = _result(
@@ -389,7 +527,7 @@ def benchmark_spark_vs_pandas(
         total_seconds=pandas_total_seconds,
         peak_rss_mb=pandas_memory.peak_mb,
         spark_version=spark.version,
-        fingerprint=pandas_fingerprint,
+        fingerprint="",
     )
 
     if spark_result.input_rows != pandas_result.input_rows:
@@ -397,10 +535,8 @@ def benchmark_spark_vs_pandas(
             "Spark and Pandas retained different taxi row counts: "
             f"Spark={spark_result.input_rows}, Pandas={pandas_result.input_rows}"
         )
-    if spark_result.fingerprint != pandas_result.fingerprint:
-        raise RuntimeError(
-            "Spark and Pandas taxi aggregation fingerprints differ for "
-            f"{dataset_label}: Spark={spark_result.fingerprint}, "
-            f"Pandas={pandas_result.fingerprint}"
-        )
+    _assert_aggregate_equivalence(spark_records, pandas_records, pandas_cleaned)
+    comparison_fingerprint = _comparison_fingerprint(spark_records, pandas_records)
+    spark_result = replace(spark_result, fingerprint=comparison_fingerprint)
+    pandas_result = replace(pandas_result, fingerprint=comparison_fingerprint)
     return [spark_result, pandas_result]

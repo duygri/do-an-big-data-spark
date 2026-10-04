@@ -1,6 +1,6 @@
 # Scripts
 
-Run scripts from the repository root with the project virtual environment active. Large benchmarks are separate from the normal data pipeline.
+Run scripts from the repository root with the project virtual environment active. The documented `python scripts/...` form works without setting `PYTHONPATH`. Large benchmarks are separate from the normal data pipeline.
 
 ## Spark persistence benchmark
 

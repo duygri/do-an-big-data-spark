@@ -13,6 +13,7 @@ from pyspark.sql.types import (
     StructType,
     TimestampType,
 )
+from src.transformation.taxi import engineer_taxi_features
 
 
 NY = ZoneInfo("America/New_York")
@@ -118,6 +119,57 @@ def test_aggregate_taxi_trips_requires_feature_columns(spark):
 
     with pytest.raises(ValueError, match="missing required columns.*PULocationID"):
         aggregate_taxi_trips(incomplete)
+
+
+def test_dst_aggregation_groups_by_features_derived_from_pickup_timestamp(spark):
+    schema = StructType(
+        [
+            StructField("tpep_pickup_datetime", TimestampType(), False),
+            StructField("tpep_dropoff_datetime", TimestampType(), False),
+            StructField("PULocationID", IntegerType(), True),
+            StructField("DOLocationID", IntegerType(), True),
+            StructField("trip_distance", DoubleType(), True),
+            StructField("fare_amount", DoubleType(), True),
+            StructField("tip_amount", DoubleType(), True),
+            StructField("payment_type", IntegerType(), True),
+        ]
+    )
+    source = spark.createDataFrame(
+        [
+            (
+                datetime(2020, 3, 8, 1, 50, tzinfo=NY),
+                datetime(2020, 3, 8, 3, 10, tzinfo=NY),
+                10,
+                20,
+                1.0,
+                8.0,
+                1.0,
+                1,
+            ),
+            (
+                datetime(2020, 3, 8, 3, 10, tzinfo=NY),
+                datetime(2020, 3, 8, 3, 25, tzinfo=NY),
+                10,
+                20,
+                1.5,
+                9.0,
+                1.0,
+                1,
+            ),
+        ],
+        schema,
+    )
+    featured = engineer_taxi_features(source)
+
+    tables = aggregate_taxi_trips(featured)
+
+    assert {
+        row.pickup_hour: row.trip_count for row in tables.trips_by_hour.collect()
+    } == {1: 1, 3: 1}
+    assert {
+        row.pickup_day_of_week: row.trip_count
+        for row in tables.trips_by_weekday.collect()
+    } == {1: 2}
 
 
 def test_zone_tables_handle_optional_labels_and_unknown_ids(spark):

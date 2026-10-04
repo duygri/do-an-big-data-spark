@@ -2,8 +2,11 @@
 
 import csv
 import json
+import os
+import subprocess
 import sys
 from datetime import datetime
+from pathlib import Path
 
 import pytest
 from pyspark.sql import SparkSession
@@ -48,11 +51,32 @@ def taxi_row(pickup, dropoff, pickup_zone, dropoff_zone, distance, fare, tip, pa
     }
 
 
-def test_spark_and_pandas_benchmarks_return_same_aggregate_fingerprint(spark, tmp_path):
+def test_spark_and_pandas_benchmarks_return_same_aggregate_fingerprint(
+    spark, tmp_path, monkeypatch
+):
     try:
         from src.aggregation.engine_benchmark import benchmark_spark_vs_pandas
     except ModuleNotFoundError:
         pytest.fail("Spark/Pandas engine benchmark is not implemented", pytrace=False)
+    from pyspark import StorageLevel
+    from pyspark.sql import DataFrame
+
+    persisted = []
+    unpersisted = []
+    original_persist = DataFrame.persist
+    original_unpersist = DataFrame.unpersist
+
+    def track_persist(frame, *args, **kwargs):
+        result = original_persist(frame, *args, **kwargs)
+        persisted.append((result, args, kwargs))
+        return result
+
+    def track_unpersist(frame, *args, **kwargs):
+        unpersisted.append(frame)
+        return original_unpersist(frame, *args, **kwargs)
+
+    monkeypatch.setattr(DataFrame, "persist", track_persist)
+    monkeypatch.setattr(DataFrame, "unpersist", track_unpersist)
 
     csv_path = tmp_path / "taxi.csv"
     duplicate = taxi_row("2019-01-03 10:00:00", "2019-01-03 10:10:00", 10, 20, 1.0, 8.0, 1.0, 1)
@@ -82,6 +106,62 @@ def test_spark_and_pandas_benchmarks_return_same_aggregate_fingerprint(spark, tm
     assert all(result.peak_rss_mb > 0 for result in results)
     assert all(result.python_version for result in results)
     assert all(result.spark_version == spark.version for result in results)
+    assert len(persisted) == len(unpersisted) == 1
+    assert persisted[0][1][0] == StorageLevel.DISK_ONLY
+    assert persisted[0][0] is unpersisted[0]
+
+
+def test_spark_and_pandas_benchmarks_match_at_dst_gap_after_cleaning(spark, tmp_path):
+    from src.aggregation.engine_benchmark import benchmark_spark_vs_pandas
+
+    csv_path = tmp_path / "dst-gap.csv"
+    rows = [
+        taxi_row("2020-03-08 02:30:00", "2020-03-08 02:40:00", 10, 20, 1.0, 8.0, 1.0, 1),
+        taxi_row("2020-03-08 03:30:00", "2020-03-08 03:40:00", 10, 20, 1.0, 8.0, 1.0, 1),
+    ]
+    with csv_path.open("w", newline="", encoding="utf-8") as stream:
+        writer = csv.DictWriter(stream, fieldnames=YELLOW_TAXI_SCHEMA.fieldNames())
+        writer.writeheader()
+        writer.writerows(rows)
+
+    results = benchmark_spark_vs_pandas([str(csv_path)], spark, "dst-gap")
+
+    assert [result.input_rows for result in results] == [1, 1]
+    assert results[0].fingerprint == results[1].fingerprint
+
+
+def test_direct_benchmark_script_invocation_shows_help_without_pythonpath():
+    repository_root = Path(__file__).resolve().parents[2]
+    environment = os.environ.copy()
+    environment.pop("PYTHONPATH", None)
+    scripts = (
+        "benchmark_spark_aggregation.py",
+        "benchmark_spark_vs_pandas.py",
+    )
+
+    for script in scripts:
+        result = subprocess.run(
+            [sys.executable, str(repository_root / "scripts" / script), "--help"],
+            cwd=repository_root,
+            env=environment,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        assert result.returncode == 0, result.stderr
+        assert "usage:" in result.stdout.lower()
+
+
+def test_benchmark_equivalence_tolerates_spark_median_rank_and_sum_roundoff():
+    from src.aggregation.engine_benchmark import (
+        _median_within_rank_tolerance,
+        _numeric_values_equal,
+    )
+
+    assert _median_within_rank_tolerance(4998.0, 4999.0, range(10_000))
+    assert not _median_within_rank_tolerance(4500.0, 4999.0, range(10_000))
+    assert _numeric_values_equal(100000.00000133288, 100000.00000000003)
+    assert not _numeric_values_equal(100000.1, 100000.0)
 
 
 def test_cli_accepts_labeled_datasets_and_writes_results(tmp_path, monkeypatch):

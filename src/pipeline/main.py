@@ -7,8 +7,11 @@ import logging
 from pathlib import Path
 
 import yaml
+from pyspark import StorageLevel
 from pyspark.sql import SparkSession
 
+from src.aggregation.export import export_taxi_aggregations
+from src.aggregation.taxi import aggregate_taxi_trips
 from src.ingestion.bronze import write_bronze
 from src.ingestion.reader import read_raw
 from src.ingestion.schema import YELLOW_TAXI_SCHEMA
@@ -43,14 +46,30 @@ def run(config_path: Path) -> int:
         report_path = str(paths["reports"])
         gold_path = str(paths.get("gold", Path(silver_path).parent / "gold"))
         processed_path = str(paths.get("processed_taxi", Path(gold_path) / "taxi_trips"))
+        aggregations_path = str(
+            paths.get("aggregations", Path(gold_path) / "aggregations")
+        )
+        analysis_reports_path = str(
+            paths.get("analysis_reports", Path(report_path) / "taxi_aggregations")
+        )
+        aggregation_config = config.get("aggregation", {})
+        if not isinstance(aggregation_config, dict):
+            raise TypeError("aggregation must be a YAML mapping")
+        aggregation_top_n = int(aggregation_config.get("top_n", 10))
     except (KeyError, TypeError) as exc:
         raise ValueError(f"Missing or invalid configuration field: {exc}") from exc
-    if not raw_path or not bronze_path or not silver_path or not report_path or not processed_path:
+    if not all(
+        (raw_path, bronze_path, silver_path, report_path, processed_path,
+         aggregations_path, analysis_reports_path)
+    ):
         raise ValueError("Input, Bronze, Silver, processed, and report paths are required")
+    if aggregation_top_n <= 0:
+        raise ValueError("aggregation.top_n must be greater than zero")
     if input_config.get("schema") != "yellow_taxi":
         raise ValueError("Cleaning currently supports only input.schema: yellow_taxi")
     spark = None
     join_result = None
+    cached_featured = None
     try:
         builder = SparkSession.builder.appName(spark_config.get("app_name", "big-data-spark-pipeline"))
         builder = builder.master(spark_config.get("master", "local[*]"))
@@ -108,6 +127,12 @@ def run(config_path: Path) -> int:
                 "taxi+_zone_lookup.csv beside the raw taxi CSV files"
             )
 
+        if join_result is None:
+            LOG.info("Persisting featured taxi trips for processed and aggregation outputs")
+            cached_featured = featured.persist(StorageLevel.DISK_ONLY)
+        else:
+            LOG.info("Reusing disk cache owned by the taxi zone join")
+
         LOG.info("Stage processed Parquet write: %s", processed_path)
         write_report = write_processed_taxi(featured, spark, processed_path)
         LOG.info(
@@ -116,15 +141,32 @@ def run(config_path: Path) -> int:
             write_report.schema,
             write_report.partition_columns,
         )
+        LOG.info("Stage taxi aggregation: %s", aggregations_path)
+        aggregation_tables = aggregate_taxi_trips(featured)
+        aggregation_report = export_taxi_aggregations(
+            aggregation_tables,
+            aggregations_path,
+            analysis_reports_path,
+            top_n=aggregation_top_n,
+        )
+        LOG.info(
+            "Taxi aggregations complete: tables=%s; report=%s",
+            aggregation_report.table_row_counts,
+            aggregation_report.markdown_path,
+        )
         return write_report.row_count
     finally:
         try:
-            if join_result is not None:
-                join_result.unpersist()
+            if cached_featured is not None:
+                cached_featured.unpersist()
         finally:
-            if spark is not None:
-                spark.stop()
-                LOG.info("Spark session stopped")
+            try:
+                if join_result is not None:
+                    join_result.unpersist()
+            finally:
+                if spark is not None:
+                    spark.stop()
+                    LOG.info("Spark session stopped")
 
 
 def main() -> None:

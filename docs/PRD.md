@@ -182,7 +182,7 @@ python -m src.pipeline.main --config configs/config.yaml
 
 #### FR-06 — Lưu số liệu và đối soát cho Gold
 
-**Trạng thái:** Chưa triển khai; yêu cầu cho phiên bản mục tiêu.
+**Trạng thái:** Đã triển khai; các bảng tổng hợp được ghi Parquet và kiểm tra lại schema, số dòng.
 
 Mỗi bảng Gold phải có grain rõ ràng và được lưu ở định dạng phù hợp để tiếp tục truy vấn bằng Spark.
 
@@ -195,7 +195,7 @@ Mỗi bảng Gold phải có grain rõ ràng và được lưu ở định dạn
 
 #### FR-07 — Tổng hợp theo thời gian
 
-**Trạng thái:** Chưa triển khai; yêu cầu cho phiên bản mục tiêu.
+**Trạng thái:** Đã triển khai; có bảng tổng hợp tháng, weekday và giờ đón.
 
 Gold phải hỗ trợ xem số chuyến theo tháng, ngày trong tuần và giờ trong ngày.
 
@@ -209,7 +209,7 @@ Gold phải hỗ trợ xem số chuyến theo tháng, ngày trong tuần và gi�
 
 #### FR-08 — Tổng hợp theo khu vực đón/trả
 
-**Trạng thái:** Chưa triển khai; yêu cầu cho phiên bản mục tiêu.
+**Trạng thái:** Đã triển khai; bảng zone giữ mã, nhãn lookup khi có, số chuyến và thứ hạng xác định.
 
 Gold phải hỗ trợ xếp hạng mã khu vực đón và trả theo số chuyến.
 
@@ -222,7 +222,7 @@ Gold phải hỗ trợ xếp hạng mã khu vực đón và trả theo số chuy
 
 #### FR-09 — Tổng hợp đặc điểm chuyến đi và thanh toán
 
-**Trạng thái:** Chưa triển khai; yêu cầu cho phiên bản mục tiêu.
+**Trạng thái:** Đã triển khai; thống kê mô tả distance/fare/tip và cơ cấu payment có mẫu số rõ ràng.
 
 Gold phải hỗ trợ mô tả quãng đường, tiền cước, tiền tip và cơ cấu phương thức thanh toán.
 
@@ -235,7 +235,7 @@ Gold phải hỗ trợ mô tả quãng đường, tiền cước, tiền tip và
 
 #### FR-10 — So sánh giai đoạn 2019 và nửa đầu 2020
 
-**Trạng thái:** Chưa triển khai; yêu cầu cho phiên bản mục tiêu.
+**Trạng thái:** Đã triển khai; so sánh các tháng 01–06 có mặt ở cả hai năm, chỉ trình bày chênh lệch mô tả.
 
 Gold phải hỗ trợ so sánh các chỉ số được chọn giữa năm 2019 và sáu tháng đầu năm 2020.
 
@@ -495,5 +495,7 @@ Thời lượng từng giai đoạn cần được ước lượng sau khi nhóm
 - [NYC TLC Trip Record Data](https://www.nyc.gov/site/tlc/about/tlc-trip-record-data.page)
 - `src/ingestion/schema.py`
 - `src/pipeline/main.py`
+- `docs/aggregations.md`
+- `docs/benchmarking.md`
 - `src/cleaning/taxi.py`
 - `src/cleaning/quality.py`

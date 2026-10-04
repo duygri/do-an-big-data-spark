@@ -152,3 +152,26 @@ def test_report_handles_empty_period_comparison(spark, tmp_path, parquet_round_t
     markdown = Path(report.markdown_path).read_text(encoding="utf-8").lower()
     assert "insufficient overlapping months" in markdown
 
+
+def test_report_describes_comparison_periods_and_missing_zone_lookup(tmp_path):
+    from src.aggregation.export import _write_markdown
+
+    output = tmp_path / "report.md"
+    rows_by_table = {
+        "trips_by_month": [
+            {"pickup_year": 2019, "pickup_month": 1, "trip_count": 2},
+            {"pickup_year": 2020, "pickup_month": 1, "trip_count": 1},
+        ],
+        "same_month_comparison": [{"pickup_month": 1}],
+        "pickup_zones": [{"location_id": 10, "zone_label": None}],
+        "dropoff_zones": [{"location_id": 20, "zone_label": None}],
+    }
+
+    _write_markdown(rows_by_table, output)
+
+    markdown = output.read_text(encoding="utf-8")
+    assert "2019 period: 2019-01 to 2019-01" in markdown
+    assert "2020 period: 2020-01 to 2020-01" in markdown
+    assert "Months included in comparison: 01 (1 month)" in markdown
+    assert "Zone lookup labels are unavailable; results show location IDs instead of names." in markdown
+

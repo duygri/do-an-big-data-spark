@@ -126,6 +126,11 @@ def _write_markdown(
     month_rows = rows_by_table["trips_by_month"]
     total_trips = sum(row["trip_count"] for row in month_rows)
     comparison = rows_by_table["same_month_comparison"]
+    zone_rows = rows_by_table["pickup_zones"] + rows_by_table["dropoff_zones"]
+    has_zone_labels = any(
+        row.get("zone_label") not in (None, "", "Unknown/Invalid")
+        for row in zone_rows
+    )
     lines = [
         "# Taxi aggregation report",
         "",
@@ -144,9 +149,19 @@ def _write_markdown(
         "- `trip_metric_stats`: non-null observation count, min, mean, approximate median (Spark accuracy 10,000), max, and sample standard deviation for distance, fare, and tip.",
         "- `payment_mix`: trip count and share of all trips; null payment type is included as `unknown` in the denominator.",
     ]
+    if not has_zone_labels:
+        lines.append(
+            "- Zone lookup labels are unavailable; results show location IDs instead of names."
+        )
     if comparison:
+        included_months = sorted({row["pickup_month"] for row in comparison})
+        first_month, last_month = included_months[0], included_months[-1]
+        month_unit = "month" if len(included_months) == 1 else "months"
         lines.extend(
             [
+                f"- 2019 period: 2019-{first_month:02d} to 2019-{last_month:02d} ({len(included_months)} {month_unit}).",
+                f"- 2020 period: 2020-{first_month:02d} to 2020-{last_month:02d} ({len(included_months)} {month_unit}).",
+                f"- Months included in comparison: {', '.join(f'{month:02d}' for month in included_months)} ({len(included_months)} {month_unit}).",
                 "- `same_month_comparison`: only overlapping months 1–6 in 2019 and 2020; deltas are 2020 minus 2019, and percent deltas are null when the 2019 value is zero.",
                 "- Year-over-year values are descriptive comparisons, not causal conclusions.",
             ]

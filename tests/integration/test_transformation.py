@@ -108,6 +108,8 @@ def test_engineer_taxi_features_uses_new_york_daylight_saving_time(spark):
     row = engineer_taxi_features(source).first()
 
     assert row.trip_duration_minutes == 20.0
+    assert row.pickup_hour == 1
+    assert row.pickup_day_of_week == 1  # Derived from the New York pickup timestamp.
 
 
 def test_engineer_taxi_features_requires_taxi_columns(spark):

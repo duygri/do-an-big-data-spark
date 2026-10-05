@@ -2,7 +2,7 @@
 
 Dự án môn **Nhập dữ liệu lớn**, xây dựng pipeline batch để nhập và xử lý dữ liệu chuyến taxi vàng tại New York bằng Python và Apache Spark (PySpark). Pipeline đọc dữ liệu CSV qua Bronze, làm sạch sang Silver, tạo đặc trưng chuyến đi, bổ sung nhãn khu vực đón/trả và ghi Parquet đã xử lý vào Gold.
 
-> **Trạng thái:** Pipeline đã có bước đọc dữ liệu, Bronze, Silver, báo cáo chất lượng, feature engineering, zone enrichment và Gold Parquet. Các kết quả tổng hợp phân tích vẫn đang trong kế hoạch phát triển.
+> **Trạng thái:** Pipeline tạo Bronze, Silver, báo cáo chất lượng, feature taxi, zone enrichment tùy chọn, processed Gold và tám bảng tổng hợp taxi Gold; báo cáo Markdown, CSV và biểu đồ được sinh cùng lần chạy.
 
 ## Mục tiêu đề tài
 
@@ -11,14 +11,14 @@ Dự án môn **Nhập dữ liệu lớn**, xây dựng pipeline batch để nh�
 - Làm sạch các trường bắt buộc, loại bản ghi trùng hoàn toàn và tạo báo cáo chất lượng có thể kiểm tra lại.
 - Chuẩn bị dữ liệu cho các phép tổng hợp theo thời gian, khu vực đón/trả và đặc điểm chuyến đi.
 
-### Câu hỏi phân tích dự kiến
+### Câu hỏi phân tích
 
 - Số chuyến thay đổi như thế nào theo tháng, ngày trong tuần và giờ trong ngày?
 - Những khu vực nào có nhiều chuyến đón hoặc trả nhất?
 - Quãng đường, tiền cước, tiền tip và phương thức thanh toán phân bố ra sao?
-- Các chỉ số trên khác nhau thế nào giữa năm 2019 và sáu tháng đầu năm 2020?
+- Các chỉ số trên khác nhau thế nào trong những tháng tương ứng có dữ liệu từ tháng 01 đến tháng 06 năm 2019 và 2020?
 
-Đây là các hướng phân tích dự kiến. Gold hiện lưu dữ liệu chuyến đã tạo đặc trưng và bổ sung nhãn khu vực; pipeline chưa tạo kết quả tổng hợp cho các câu hỏi trên.
+Pipeline tạo kết quả cho các câu hỏi trên. So sánh 2019–2020 chỉ dùng các tháng tương ứng có mặt ở cả hai năm và được diễn giải mô tả.
 
 ## Dữ liệu
 
@@ -46,6 +46,8 @@ data/silver/cleaned/   Làm sạch và kiểm tra chất lượng
    │
    ▼
 data/gold/taxi_trips/  Feature engineering + zone enrichment, Parquet theo năm/tháng đón
+data/gold/aggregations/  Tám bảng Gold tổng hợp taxi, Parquet
+reports/generated/taxi_aggregations/  CSV, báo cáo Markdown và biểu đồ tổng hợp
 ```
 
 ### Các bước làm sạch hiện có
@@ -63,6 +65,8 @@ Bronze và Silver được ghi đè khi chạy lại pipeline. Báo cáo chứa 
 - Apache Spark / PySpark 3.5.x
 - Java 11 hoặc Java 17
 - Parquet với nén Snappy
+- Matplotlib để tạo biểu đồ từ các bảng tổng hợp nhỏ
+- Pandas và psutil cho benchmark so sánh engine
 - PyYAML để đọc cấu hình YAML
 
 ## Cài đặt và chạy
@@ -100,6 +104,17 @@ python -m src.pipeline.main --config configs/config.yaml
 
 Các đường dẫn trong cấu hình được tính từ thư mục hiện hành. Pipeline hiện chạy ở chế độ local bằng `local[*]`; có thể thay đổi Spark master và một số tuỳ chọn trong file cấu hình.
 
+Pipeline cũng ghi tám bảng Gold vào `paths.aggregations` (mặc định `data/gold/aggregations`) và report vào `paths.analysis_reports` (mặc định `reports/generated/taxi_aggregations`). `aggregation.top_n` (mặc định `10`) chỉ giới hạn số khu vực trên biểu đồ; Parquet và CSV giữ mọi khu vực. Chi tiết grain, cột, quy tắc null và biểu đồ nằm trong [docs/aggregations.md](docs/aggregations.md).
+
+Benchmark persistence Spark chạy riêng, không nằm trong pipeline thường ngày:
+
+```powershell
+python scripts/benchmark_spark_aggregation.py `
+  --input data/gold/taxi_trips `
+  --output reports/generated/aggregation_benchmark `
+  --repetitions 3
+```
+
 ## Kết quả đầu ra
 
 | Đường dẫn | Nội dung |
@@ -109,6 +124,10 @@ Các đường dẫn trong cấu hình được tính từ thư mục hiện hà
 | `reports/generated/taxi_quality.json` | Báo cáo chất lượng dạng JSON. |
 | `reports/generated/taxi_quality.md` | Tóm tắt báo cáo chất lượng dạng Markdown. |
 | `data/gold/taxi_trips/` | Chuyến taxi đã tạo đặc trưng và bổ sung nhãn khu vực, phân vùng theo năm/tháng đón. |
+| `data/gold/aggregations/` | Tám bảng Parquet: theo tháng, weekday, giờ, zone đón/trả, thống kê metric, payment mix và so sánh tháng tương ứng. |
+| `reports/generated/taxi_aggregations/csv/` | Một CSV có header cho mỗi bảng tổng hợp. |
+| `reports/generated/taxi_aggregations/taxi_aggregation_report.md` | Định nghĩa metric, phạm vi ngày, quy tắc dữ liệu và tóm tắt kỳ so sánh. |
+| `reports/generated/taxi_aggregations/charts/` | `monthly_trips.png`, top pickup/dropoff zones và `payment_mix.png`. |
 
 ## Cấu trúc repository
 
@@ -123,7 +142,7 @@ src/
 ├── cleaning/             Làm sạch, kiểm tra và ghi Silver
 ├── pipeline/             Điểm chạy pipeline
 ├── transformation/       Tạo đặc trưng chuyến đi, nối bảng taxi zone và ghi Gold
-└── aggregation/          Khung cho bước tổng hợp tiếp theo
+└── aggregation/          Bảng tổng hợp taxi, Gold/report exports và benchmark Spark
 tests/integration/        Kiểm thử tích hợp bước nhập liệu và làm sạch
 scripts/                  Vị trí cho các script hỗ trợ
 ```
@@ -144,5 +163,7 @@ pytest -q
 - [Định nghĩa feature taxi](docs/transformation-features.md)
 - [Zone enrichment](docs/transformation-joins.md)
 - [Processed Parquet](docs/processed-output.md)
+- [Taxi aggregations và báo cáo](docs/aggregations.md)
+- [Benchmark Spark và Pandas](docs/benchmarking.md)
 - [Bộ dữ liệu trên Kaggle](https://www.kaggle.com/datasets/microize/newyork-yellow-taxi-trip-data-2020-2019)
 - [NYC TLC Trip Record Data](https://www.nyc.gov/site/tlc/about/tlc-trip-record-data.page)

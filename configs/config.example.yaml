@@ -9,9 +9,16 @@ paths:
   bronze: data/bronze/raw
   silver: data/silver/cleaned
   gold: data/gold
+  processed_taxi: data/gold/taxi_trips
+  aggregations: data/gold/aggregations
   reports: reports/generated
+  analysis_reports: reports/generated/taxi_aggregations
+
+aggregation:
+  top_n: 10
 
 spark:
   app_name: big-data-spark-pipeline
   master: local[*]
+  session_timezone: America/New_York
   max_partition_bytes: 134217728

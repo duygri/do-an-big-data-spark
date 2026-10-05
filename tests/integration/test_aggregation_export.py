@@ -22,7 +22,7 @@ from src.aggregation.taxi import aggregate_taxi_trips
 NY = ZoneInfo("America/New_York")
 TABLE_NAMES = [
     "trips_by_month", "trips_by_weekday", "trips_by_hour", "pickup_zones",
-    "dropoff_zones", "trip_metric_stats", "payment_mix", "same_month_comparison",
+    "dropoff_zones", "trip_metric_stats", "payment_mix",
 ]
 
 
@@ -40,7 +40,7 @@ def spark():
     session.stop()
 
 
-def taxi_frame(spark, years=(2019, 2020, 2021)):
+def taxi_frame(spark, years=(2020, 2020, 2020)):
     schema = StructType(
         [
             StructField("tpep_pickup_datetime", TimestampType(), True),
@@ -58,7 +58,7 @@ def taxi_frame(spark, years=(2019, 2020, 2021)):
     )
     rows = []
     for index, year in enumerate(years):
-        month = 1 if year in (2019, 2020) else index + 1
+        month = index + 1
         rows.append(
             (
                 datetime(year, month, 10, 9 + index, tzinfo=NY),
@@ -137,7 +137,7 @@ def test_export_writes_each_gold_table_and_csv(spark, tmp_path, parquet_round_tr
         payment_rows = list(csv.DictReader(stream))
     assert {row["payment_type"] for row in payment_rows} == {"1", "unknown"}
     markdown = Path(report.markdown_path).read_text(encoding="utf-8")
-    assert "2019-01 to 2021-03" in markdown
+    assert "2020-01 to 2020-03" in markdown
     assert "approximate median" in markdown.lower()
     assert "America/New_York" in markdown
     assert set(report.chart_paths) == {
@@ -147,31 +147,27 @@ def test_export_writes_each_gold_table_and_csv(spark, tmp_path, parquet_round_tr
     assert report.table_row_counts["pickup_zones"] == 3
 
 
-def test_report_handles_empty_period_comparison(spark, tmp_path, parquet_round_trip):
-    tables = aggregate_taxi_trips(taxi_frame(spark, years=(2021,)))
+def test_report_handles_empty_trip_input(spark, tmp_path, parquet_round_trip):
+    tables = aggregate_taxi_trips(taxi_frame(spark, years=()))
 
     report = export_taxi_aggregations(
         tables, str(tmp_path / "gold"), str(tmp_path / "reports")
     )
 
-    assert report.table_row_counts["same_month_comparison"] == 0
-    with open(report.csv_paths["same_month_comparison"], newline="", encoding="utf-8") as stream:
-        comparison_rows = list(csv.DictReader(stream))
-    assert comparison_rows == []
-    markdown = Path(report.markdown_path).read_text(encoding="utf-8").lower()
-    assert "insufficient overlapping months" in markdown
+    assert list(report.table_row_counts) == TABLE_NAMES
+    markdown = Path(report.markdown_path).read_text(encoding="utf-8")
+    assert "No pickup year/month values available" in markdown
+    assert "same_month_comparison" not in report.table_row_counts
 
-
-def test_report_describes_comparison_periods_and_missing_zone_lookup(tmp_path):
+def test_report_describes_date_coverage_and_missing_zone_lookup(tmp_path):
     from src.aggregation.export import _write_markdown
 
     output = tmp_path / "report.md"
     rows_by_table = {
         "trips_by_month": [
-            {"pickup_year": 2019, "pickup_month": 1, "trip_count": 2},
-            {"pickup_year": 2020, "pickup_month": 1, "trip_count": 1},
+            {"pickup_year": 2020, "pickup_month": 1, "trip_count": 2},
+            {"pickup_year": 2020, "pickup_month": 2, "trip_count": 1},
         ],
-        "same_month_comparison": [{"pickup_month": 1}],
         "pickup_zones": [{"location_id": 10, "zone_label": None}],
         "dropoff_zones": [{"location_id": 20, "zone_label": None}],
     }
@@ -179,8 +175,7 @@ def test_report_describes_comparison_periods_and_missing_zone_lookup(tmp_path):
     _write_markdown(rows_by_table, output)
 
     markdown = output.read_text(encoding="utf-8")
-    assert "2019 period: 2019-01 to 2019-01" in markdown
-    assert "2020 period: 2020-01 to 2020-01" in markdown
-    assert "Months included in comparison: 01 (1 month)" in markdown
+    assert "Pickup date coverage: 2020-01 to 2020-02" in markdown
     assert "Zone lookup labels are unavailable; results show location IDs instead of names." in markdown
-
+    assert "2019" not in markdown
+    assert "same_month_comparison" not in markdown

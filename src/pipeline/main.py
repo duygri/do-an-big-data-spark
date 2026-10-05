@@ -16,6 +16,7 @@ from src.ingestion.bronze import write_bronze
 from src.ingestion.reader import read_raw
 from src.ingestion.schema import YELLOW_TAXI_SCHEMA
 from src.cleaning.silver import clean_to_silver
+from src.pipeline.taxi_inputs import validate_taxi_inputs
 from src.transformation.joins import join_taxi_zones, read_taxi_zone_lookup
 from src.transformation.processed import write_processed_taxi
 from src.transformation.taxi import FEATURE_COLUMNS, engineer_taxi_features
@@ -67,6 +68,7 @@ def run(config_path: Path) -> int:
         raise ValueError("aggregation.top_n must be greater than zero")
     if input_config.get("schema") != "yellow_taxi":
         raise ValueError("Cleaning currently supports only input.schema: yellow_taxi")
+    input_files = validate_taxi_inputs(raw_path, file_format)
     spark = None
     join_result = None
     cached_featured = None
@@ -81,6 +83,7 @@ def run(config_path: Path) -> int:
             builder = builder.config("spark.sql.files.maxPartitionBytes", spark_config["max_partition_bytes"])
         spark = builder.getOrCreate()
         LOG.info("Stage ingest: %s (%s)", raw_path, file_format)
+        LOG.info("Selected taxi files: %s", [path.name for path in input_files])
         schema = YELLOW_TAXI_SCHEMA if input_config.get("schema") == "yellow_taxi" else None
         df = read_raw(
             spark, raw_path, file_format=file_format, schema=schema,

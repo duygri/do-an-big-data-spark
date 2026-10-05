@@ -1,4 +1,4 @@
-"""Explicit schema for the 2019–2020 NYC yellow taxi CSV files."""
+"""Explicit schema for NYC yellow taxi CSV files."""
 
 from pyspark.sql.types import DoubleType, IntegerType, StringType, StructField, StructType, TimestampType
 

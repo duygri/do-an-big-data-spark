@@ -8,7 +8,7 @@ The command accepts one or more labeled datasets. Use a file, a directory contai
 
 ```powershell
 python scripts/benchmark_spark_vs_pandas.py `
-  --dataset 100mb=data/raw/nyc_taxi/yellow_tripdata_2019-01.csv `
+  --dataset 100mb=data/raw/nyc_taxi/yellow_tripdata_2020-01.csv `
   --dataset 1gb=data/raw/nyc_taxi/sample_1gb `
   --dataset 5gb=data/raw/nyc_taxi/sample_5gb `
   --output reports/generated/engine_benchmark

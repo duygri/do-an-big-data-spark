@@ -148,4 +148,3 @@ def test_cli_writes_results_and_physical_plan_evidence(tmp_path, monkeypatch):
         assert plan_path.is_file()
         assert "scan" in plan_path.read_text(encoding="utf-8").lower()
     assert fake_spark.stopped is True
-

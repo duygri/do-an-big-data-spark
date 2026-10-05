@@ -25,19 +25,11 @@ OPTIONAL_ZONE_COLUMNS = {
     "pickup": ("pickup_zone", "pickup_borough"),
     "dropoff": ("dropoff_zone", "dropoff_borough"),
 }
-COMPARISON_METRICS = (
-    "trip_count",
-    "total_fare_amount",
-    "avg_fare_amount",
-    "total_tip_amount",
-    "avg_tip_amount",
-    "avg_trip_distance",
-)
 
 
 @dataclass(frozen=True)
 class TaxiAggregationTables:
-    """The eight queryable Gold aggregation tables for taxi trips."""
+    """The seven queryable Gold aggregation tables for taxi trips."""
 
     trips_by_month: DataFrame
     trips_by_weekday: DataFrame
@@ -46,7 +38,6 @@ class TaxiAggregationTables:
     dropoff_zones: DataFrame
     trip_metric_stats: DataFrame
     payment_mix: DataFrame
-    same_month_comparison: DataFrame
 
 
 def _zone_table(df: DataFrame, direction: str) -> DataFrame:
@@ -127,42 +118,8 @@ def _metric_stats(df: DataFrame) -> DataFrame:
     return result
 
 
-def _same_month_comparison(monthly: DataFrame) -> DataFrame:
-    year_2019 = monthly.filter(
-        (F.col("pickup_year") == 2019)
-        & F.col("pickup_month").between(1, 6)
-    ).select(
-        "pickup_month",
-        *[F.col(metric).alias(f"{metric}_2019") for metric in COMPARISON_METRICS],
-    )
-    year_2020 = monthly.filter(
-        (F.col("pickup_year") == 2020)
-        & F.col("pickup_month").between(1, 6)
-    ).select(
-        "pickup_month",
-        *[F.col(metric).alias(f"{metric}_2020") for metric in COMPARISON_METRICS],
-    )
-    overlapping = year_2019.join(year_2020, "pickup_month", "inner")
-    projected = [F.col("pickup_month")]
-    for metric in COMPARISON_METRICS:
-        value_2019 = F.col(f"{metric}_2019")
-        value_2020 = F.col(f"{metric}_2020")
-        delta = value_2020 - value_2019
-        projected.extend(
-            [
-                value_2019,
-                value_2020,
-                delta.alias(f"{metric}_delta"),
-                F.when(value_2019 != 0, delta / value_2019 * 100.0)
-                .otherwise(F.lit(None).cast("double"))
-                .alias(f"{metric}_pct_delta"),
-            ]
-        )
-    return overlapping.select(*projected)
-
-
 def aggregate_taxi_trips(df: DataFrame) -> TaxiAggregationTables:
-    """Build Spark DataFrames for time, zone, metric, payment, and comparison views.
+    """Build Spark DataFrames for time, zone, metric, and payment views.
 
     Pickup time columns are supplied by taxi feature engineering, which uses the
     Spark session timezone. Negative distance/fare/tip values are retained;
@@ -181,7 +138,6 @@ def aggregate_taxi_trips(df: DataFrame) -> TaxiAggregationTables:
         F.avg("fare_amount").alias("avg_fare_amount"),
         F.sum("tip_amount").alias("total_tip_amount"),
         F.avg("tip_amount").alias("avg_tip_amount"),
-        F.avg("trip_distance").alias("avg_trip_distance"),
     )
     trips_by_month = monthly_internal.select(
         "pickup_year",
@@ -221,5 +177,4 @@ def aggregate_taxi_trips(df: DataFrame) -> TaxiAggregationTables:
         dropoff_zones=_zone_table(df, "dropoff"),
         trip_metric_stats=_metric_stats(df),
         payment_mix=payment_mix,
-        same_month_comparison=_same_month_comparison(monthly_internal),
     )

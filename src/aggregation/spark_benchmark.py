@@ -55,7 +55,7 @@ def compare_aggregation_persistence(
     """Compare uncached and DISK_ONLY-cached runs over the same taxi input.
 
     Cache materialization is included in the persisted elapsed time. Both modes
-    execute the row-count and all eight aggregation actions in each repetition.
+    execute the row-count and all seven aggregation actions in each repetition.
     """
     if repetitions < 1:
         raise ValueError("repetitions must be at least 1")

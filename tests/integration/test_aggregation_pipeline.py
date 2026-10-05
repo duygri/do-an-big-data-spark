@@ -60,16 +60,30 @@ def write_taxi_csv(path: Path) -> None:
         writer.writerows(rows)
 
 
-def test_pipeline_writes_aggregation_outputs_from_small_csv(tmp_path, monkeypatch, spark):
-    csv_path = tmp_path / "yellow.csv"
-    write_taxi_csv(csv_path)
+
+def write_header_only_taxi_csv(path: Path) -> None:
+    with path.open("w", newline="", encoding="utf-8") as stream:
+        writer = csv.DictWriter(stream, fieldnames=YELLOW_TAXI_SCHEMA.fieldNames())
+        writer.writeheader()
+
+
+def test_pipeline_writes_aggregation_outputs_from_six_months(tmp_path, monkeypatch, spark):
+    raw_dir = tmp_path / "raw"
+    raw_dir.mkdir()
+    for month in range(1, 7):
+        csv_path = raw_dir / f"yellow_tripdata_2020-{month:02d}.csv"
+        if month == 4:
+            write_taxi_csv(csv_path)
+        else:
+            write_header_only_taxi_csv(csv_path)
+    input_pattern = (raw_dir / "yellow_tripdata_2020-0[1-6].csv").as_posix()
     gold_path = tmp_path / "gold"
     report_path = tmp_path / "reports"
     processed_path = gold_path / "taxi_trips"
     config_path = tmp_path / "config.yaml"
     config_path.write_text(
         f"""input:
-  path: {csv_path}
+  path: '{input_pattern}'
   format: csv
   schema: yellow_taxi
   header: true
@@ -128,7 +142,7 @@ aggregation:
     analysis_root = report_path / "taxi_aggregations"
     expected_tables = {
         "trips_by_month", "trips_by_weekday", "trips_by_hour", "pickup_zones",
-        "dropoff_zones", "trip_metric_stats", "payment_mix", "same_month_comparison",
+        "dropoff_zones", "trip_metric_stats", "payment_mix",
     }
     assert row_count == 4
     if os.name == "nt" and not has_winutils:

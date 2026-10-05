@@ -5,96 +5,95 @@
 | Trường | Giá trị |
 |---|---|
 | **Tên tài liệu** | Product Requirements Document — Pipeline nhập dữ liệu taxi vàng New York bằng PySpark |
-| **Phiên bản** | 0.1 |
+| **Phiên bản** | 0.2 |
 | **Tác giả** | Nhóm dự án (PM phụ trách: cần bổ sung) |
-| **Trạng thái** | Bản dự thảo để rà soát |
-| **Cập nhật lần cuối** | 02/10/2026 |
+| **Trạng thái** | Đã đồng bộ với phạm vi 6 tệp 2020 và pipeline hiện tại |
+| **Cập nhật lần cuối** | 05/10/2026 |
 
 ## 2. Tổng quan và vấn đề cần giải quyết
 
-Dự án xây dựng pipeline batch để nhập và xử lý dữ liệu chuyến taxi vàng tại New York bằng Python và Apache Spark. Dữ liệu gồm 18 tệp CSV theo tháng, từ tháng 01/2019 đến tháng 06/2020.
+Dự án xây dựng pipeline batch để nhập và xử lý dữ liệu chuyến taxi vàng tại New York bằng Python và Apache Spark. Bộ dữ liệu Kaggle có các tệp CSV theo tháng từ 01/2019 đến 06/2020, nhưng pipeline của dự án chỉ đọc đúng sáu tệp từ tháng 01 đến tháng 06/2020.
 
-Xử lý các tệp lớn bằng pandas hoặc Python thuần có thể vượt quá giới hạn bộ nhớ của một máy. Dự án sử dụng PySpark để thực hành đọc dữ liệu theo schema tường minh, lưu trữ dữ liệu dạng Parquet và thực hiện các bước làm sạch có thể kiểm tra lại.
+Xử lý dữ liệu nhiều dòng bằng pandas hoặc Python thuần có thể vượt quá giới hạn bộ nhớ của một máy. Dự án sử dụng PySpark, schema tường minh và Parquet để thực hành xử lý phân tán và kiểm tra được kết quả qua từng bước.
 
-Pipeline hiện có các bước đọc CSV, ghi lớp Bronze, làm sạch sang lớp Silver và xuất báo cáo chất lượng dạng JSON và Markdown. Lớp Gold và các phép tổng hợp để trả lời câu hỏi phân tích chưa được triển khai. Bảng tra cứu khu vực cũng chưa được đọc vào pipeline.
+Pipeline hiện đọc sáu CSV, ghi Bronze, làm sạch sang Silver và tạo báo cáo chất lượng. Pipeline cũng tạo feature taxi, bổ sung zone nếu có lookup, ghi processed Gold, bảy bảng aggregation Gold và các báo cáo CSV/Markdown/biểu đồ.
 
 ## 3. Mục tiêu và mục đích
 
 ### Mục tiêu học phần
 
-- Thực hành nhập dữ liệu nhiều tệp và dung lượng lớn bằng Spark.
-- Áp dụng schema tường minh để kiểm soát kiểu dữ liệu.
-- Lưu dữ liệu trung gian bằng Parquet và nén Snappy.
-- Thiết kế các bước làm sạch, kiểm tra chất lượng và lưu vết số dòng.
-- Tạo nền tảng dữ liệu có thể dùng cho phân tích theo thời gian, khu vực và đặc điểm chuyến đi.
+- Thực hành nhập và xử lý dữ liệu taxi bằng Spark.
+- Áp dụng schema tường minh gồm 18 cột.
+- Lưu các lớp trung gian và kết quả bằng Parquet nén Snappy.
+- Thiết kế bước làm sạch, kiểm tra chất lượng và đối soát số dòng.
+- Tạo bảng tổng hợp phục vụ phân tích mô tả trong phạm vi sáu tháng đầu năm 2020.
 
 ### Mục tiêu sản phẩm
 
-1. Duy trì pipeline Raw → Bronze → Silver có thể chạy lại bằng cấu hình.
-2. Đảm bảo số dòng và schema được xác minh sau khi ghi Bronze và Silver.
-3. Tạo báo cáo chất lượng rõ ràng cho mỗi lần chạy thành công.
-4. Phát triển lớp Gold để hỗ trợ các câu hỏi phân tích đã nêu.
-5. Ghi rõ giới hạn dữ liệu và quy tắc lọc để người đọc không diễn giải quá mức kết quả.
+1. Chạy pipeline Raw → Bronze → Silver → Gold bằng cấu hình.
+2. Chỉ nhận đúng sáu CSV từ tháng 01 đến tháng 06/2020; từ chối đầu vào thiếu hoặc lệch phạm vi trước khi khởi tạo Spark.
+3. Xác minh schema và số dòng sau khi ghi Bronze, Silver và các bảng Gold.
+4. Tạo báo cáo chất lượng, báo cáo aggregation và biểu đồ cho mỗi lần chạy thành công.
+5. Ghi rõ phạm vi thời gian và quy tắc xử lý để người đọc diễn giải đúng kết quả.
 
 ## 4. Chỉ số thành công / KPI
 
 | Chỉ số | Mục tiêu | Trạng thái |
 |---|---|---|
-| Phạm vi dữ liệu | Chạy đầy đủ 18 tệp tháng; cho phép chạy thử một tệp | Cần bổ sung kiểm tra tính đầy đủ của bộ tệp khi chạy toàn bộ |
-| Tính toàn vẹn schema | Đọc dữ liệu theo schema 18 cột đã khai báo | Đã triển khai |
-| Xác minh Bronze | Số dòng và schema sau khi đọc lại Parquet khớp với đầu vào | Đã triển khai |
-| Xác minh Silver | Số dòng và schema sau khi đọc lại Parquet khớp với dữ liệu đã làm sạch | Đã triển khai |
-| Báo cáo chất lượng | Mỗi lần chạy thành công tạo đủ báo cáo JSON và Markdown | Đã triển khai |
-| Số dòng bị loại | Xác định được số dòng bị loại do thiếu trường bắt buộc và do trùng chính xác | Đã triển khai |
-| Kết quả Gold | Các bảng tổng hợp hỗ trợ câu hỏi phân tích trong mục 7 và 8 | Chưa triển khai |
-| Thời gian chạy | Ghi nhận thời gian chạy với bộ dữ liệu đầy đủ; đặt ngưỡng sau khi đo trên môi trường mục tiêu | Chưa có baseline |
+| Phạm vi dữ liệu | Đúng sáu CSV từ 2020-01 đến 2020-06; preflight từ chối tháng thiếu hoặc tệp ngoài phạm vi trong glob | Đã triển khai |
+| Tính toàn vẹn schema | Đọc theo schema taxi vàng gồm 18 cột | Đã triển khai |
+| Xác minh Bronze/Silver | Đọc lại Parquet và đối soát schema, số dòng | Đã triển khai |
+| Báo cáo chất lượng | Tạo báo cáo JSON và Markdown sau lần chạy thành công | Đã triển khai |
+| Kết quả Gold | Tạo bảy bảng aggregation taxi cùng CSV, báo cáo Markdown và biểu đồ | Đã triển khai |
+| Hiệu năng | Có script benchmark Spark persistence và Spark/Pandas; baseline phụ thuộc máy chạy | Đã có công cụ; chưa đặt ngưỡng |
 
 ## 5. Người dùng và bên liên quan
 
 | Vai trò | Nhu cầu |
 |---|---|
-| **Sinh viên / nhóm phát triển** | Chạy pipeline, kiểm tra dữ liệu qua từng lớp và phát triển các bước Gold |
-| **Giảng viên** | Đánh giá cách thiết kế pipeline, xử lý dữ liệu lớn và kiểm soát chất lượng |
-| **Người phân tích dữ liệu** | Truy vấn số chuyến, khu vực, quãng đường, cước phí và khác biệt giữa các giai đoạn |
+| **Sinh viên / nhóm phát triển** | Chạy pipeline trên sáu tệp, kiểm tra kết quả từng lớp và tái lập báo cáo |
+| **Giảng viên** | Đánh giá cách nhập dữ liệu lớn, làm sạch, đối soát và phân tích bằng Spark |
+| **Người phân tích dữ liệu** | Xem xu hướng chuyến đi, khu vực, quãng đường, cước, tip và phương thức thanh toán trong 01–06/2020 |
 
 ## 6. Phạm vi
 
 ### Trong phạm vi
 
-- Nhập các tệp CSV dữ liệu taxi vàng theo tháng.
+- Đọc đúng sáu CSV taxi vàng tháng 01–06/2020 bằng cấu hình mặc định.
 - Áp dụng schema tường minh gồm 18 cột.
-- Ghi dữ liệu Bronze và Silver dưới dạng Parquet nén Snappy.
-- Thực hiện các quy tắc làm sạch hiện có và xuất báo cáo chất lượng.
-- Phát triển các phép tổng hợp Gold theo thời gian, khu vực và đặc điểm chuyến đi.
-- So sánh các chỉ số giữa các giai đoạn 2019 và sáu tháng đầu năm 2020.
-- Cho phép chạy toàn bộ dữ liệu hoặc một tệp để thử nghiệm.
+- Ghi Bronze, Silver, processed Gold và bảy bảng aggregation dưới dạng Parquet.
+- Làm sạch dữ liệu và tạo báo cáo chất lượng.
+- Tạo feature thời gian/chuyến đi và nối zone lookup tùy chọn.
+- Xuất các bảng aggregation thành CSV, báo cáo Markdown và biểu đồ.
+- Cung cấp benchmark độc lập cho Spark persistence và Spark/Pandas.
 
 ### Ngoài phạm vi
 
-- Xử lý dữ liệu streaming hoặc dữ liệu thời gian thực.
-- Tích hợp nguồn dữ liệu ngoài bộ NYC Yellow Taxi Trip Data đã nêu.
-- Xây dựng dashboard hoặc ứng dụng phục vụ người dùng cuối.
+- Đọc các tháng năm 2019 hoặc tháng 07/2020 trở đi trong pipeline này.
+- So sánh năm 2019 với năm 2020.
+- Xử lý streaming hoặc thời gian thực.
+- Xây dựng dashboard hoặc ứng dụng cho người dùng cuối.
 - Dự báo, machine learning hoặc kết luận quan hệ nhân quả.
-- Loại bỏ bản ghi chỉ vì có giá trị bất thường; các cảnh báo hiện được ghi nhận nhưng bản ghi vẫn được giữ lại.
-- Cung cấp hạ tầng cụm Spark hoặc dịch vụ triển khai production.
+- Loại bản ghi chỉ vì có giá trị bất thường; cảnh báo chất lượng không tự động loại dữ liệu.
+- Cung cấp cụm Spark hoặc dịch vụ production.
 
 ## 7. User stories và trường hợp sử dụng
 
 ### User stories
 
-- **Là sinh viên**, tôi muốn chạy pipeline trên toàn bộ các tệp tháng để xử lý dữ liệu bằng Spark.
-- **Là sinh viên**, tôi muốn chạy thử một tệp tháng để kiểm tra cấu hình trước khi xử lý toàn bộ dữ liệu.
-- **Là người kiểm tra dữ liệu**, tôi muốn biết số dòng bị loại ở từng bước và các cảnh báo chất lượng.
-- **Là người phân tích**, tôi muốn tổng hợp số chuyến theo thời gian và khu vực để tìm các xu hướng chính.
-- **Là giảng viên**, tôi muốn xem rõ schema, quy tắc làm sạch và kết quả đối soát để đánh giá tính đúng đắn của pipeline.
+- **Là sinh viên**, tôi muốn chạy pipeline trên đúng sáu tệp từ tháng 01 đến tháng 06/2020 để tạo các lớp dữ liệu có thể kiểm tra.
+- **Là người vận hành**, tôi muốn biết trước khi Spark khởi động nếu thiếu tệp hoặc glob chọn sai tháng.
+- **Là người kiểm tra dữ liệu**, tôi muốn xem số dòng bị loại và các cảnh báo chất lượng.
+- **Là người phân tích**, tôi muốn xem tổng hợp chuyến theo thời gian, khu vực và đặc điểm chuyến đi trong kỳ dữ liệu.
+- **Là giảng viên**, tôi muốn kiểm tra schema, quy tắc làm sạch, đầu ra và số liệu đối soát.
 
 ### Trường hợp sử dụng chính
 
-1. Người dùng tải và giải nén dữ liệu, đặt các tệp CSV vào thư mục Raw.
-2. Người dùng sao chép cấu hình mẫu và điều chỉnh đường dẫn nếu cần.
-3. Pipeline kiểm tra đầu vào, đọc dữ liệu theo schema và ghi Bronze.
-4. Pipeline đọc lại Bronze, làm sạch dữ liệu, ghi Silver và tạo báo cáo chất lượng.
-5. Khi lớp Gold hoàn tất, người dùng chạy các phép tổng hợp và xem các bảng kết quả để trả lời câu hỏi phân tích.
+1. Người dùng tải bộ dữ liệu và đặt sáu CSV 2020-01 đến 2020-06 vào thư mục Raw; các CSV 2019 khác không được chọn bởi glob mặc định.
+2. Người dùng sao chép cấu hình mẫu và điều chỉnh đường dẫn cục bộ khi cần.
+3. Preflight xác nhận đúng sáu tệp trước khi tạo Spark session.
+4. Pipeline đọc CSV theo schema, ghi Bronze, làm sạch và ghi Silver cùng báo cáo chất lượng.
+5. Pipeline tạo feature, xử lý zone lookup nếu có, ghi processed Gold, bảy bảng tổng hợp và các báo cáo đầu ra.
 
 ## 8. Yêu cầu chức năng
 
@@ -110,7 +109,7 @@ Pipeline phải đọc CSV có header theo schema taxi vàng 18 cột.
 
 **Tiêu chí nghiệm thu**
 
-- Đầu vào có thể là một tệp hoặc một nhóm tệp khớp với đường dẫn glob trong cấu hình.
+- Lần chạy pipeline yêu cầu đúng sáu tệp tháng 01–06/2020 theo glob cấu hình; preflight kiểm tra bộ tệp trước khi Spark khởi động.
 - Schema đầu vào phải khớp với schema taxi vàng mà pipeline hỗ trợ.
 - Đường dẫn không khớp tệp nào phải khiến lần chạy báo lỗi rõ ràng.
 - Dữ liệu không hợp lệ theo chế độ đọc `FAILFAST` phải làm lần chạy thất bại thay vì âm thầm bỏ qua bản ghi.
@@ -176,7 +175,7 @@ python -m src.pipeline.main --config configs/config.yaml
 
 - Cấu hình mẫu có thể được sao chép thành cấu hình cục bộ.
 - Người dùng có thể đổi đường dẫn đầu vào, định dạng, header, đường dẫn Bronze/Silver/report, Spark master và giới hạn partition được cấu hình.
-- Có thể trỏ `input.path` tới một tệp CSV để chạy thử.
+- Có thể đổi đường dẫn đầu vào, nhưng glob sau khi đổi vẫn phải chọn đúng sáu tệp tháng 01–06/2020.
 - Thiếu file cấu hình hoặc cấu hình sai phải khiến chương trình kết thúc với mã lỗi và ghi thông tin lỗi vào log.
 - Các đường dẫn tương đối được tính từ thư mục hiện hành khi chạy.
 
@@ -233,49 +232,43 @@ Gold phải hỗ trợ mô tả quãng đường, tiền cước, tiền tip và
 - Nếu hiển thị tỷ lệ phần trăm, mẫu số và cách xử lý giá trị null được nêu rõ.
 - Nếu dùng histogram hoặc nhóm khoảng, biên nhóm và đơn vị được ghi lại; không tự diễn giải nhóm là phân loại chính thức của nguồn.
 
-#### FR-10 — So sánh giai đoạn 2019 và nửa đầu 2020
+#### FR-10 — Tổng hợp kỳ tháng 01–06/2020
 
-**Trạng thái:** Đã triển khai; so sánh các tháng 01–06 có mặt ở cả hai năm, chỉ trình bày chênh lệch mô tả.
+**Trạng thái:** Đã triển khai.
 
-Gold phải hỗ trợ so sánh các chỉ số được chọn giữa năm 2019 và sáu tháng đầu năm 2020.
+Các bảng Gold và báo cáo phải phản ánh dữ liệu chuyến từ sáu tháng đầu năm 2020.
 
 **Tiêu chí nghiệm thu**
 
-- Kết quả ghi rõ ngày bắt đầu, ngày kết thúc và số tháng được đưa vào từng kỳ.
-- Khi so sánh xu hướng theo tháng, hỗ trợ so sánh cùng các tháng 01–06 của hai năm.
-- Nếu so sánh cả năm 2019 với sáu tháng đầu 2020, báo cáo ghi rõ hai kỳ có thời lượng khác nhau.
-- Kết quả chỉ được trình bày là mô tả dữ liệu; không kết luận nguyên nhân từ chênh lệch nếu chưa có phương pháp phân tích phù hợp.
+- Bảng theo tháng thể hiện các tháng có dữ liệu trong năm 2020.
+- Báo cáo ghi phạm vi ngày thực tế được tổng hợp.
+- Không tạo hoặc mô tả kết quả so sánh 2019–2020 khi pipeline không đọc dữ liệu 2019.
+
+#### FR-11 — Kiểm tra bộ tệp đầu vào
+
+**Trạng thái:** Đã triển khai.
+
+Preflight phải xác nhận glob chọn đúng sáu CSV từ tháng 01 đến tháng 06/2020 trước khi tạo Spark session.
+
+**Tiêu chí nghiệm thu**
+
+- Danh sách kỳ vọng gồm `yellow_tripdata_2020-01.csv` đến `yellow_tripdata_2020-06.csv`.
+- Tệp thiếu, glob rỗng, định dạng không phải CSV, thư mục thay vì file hoặc tệp tháng ngoài phạm vi trong glob khiến lần chạy báo lỗi rõ ràng.
+- CSV 2019 hoặc tháng ngoài 01–06/2020 có thể nằm trong thư mục Raw nhưng không được glob mặc định chọn.
 
 ### Should-have
 
-#### FR-11 — Nối lookup khu vực
+#### FR-12 — Nối lookup khu vực tùy chọn
 
-**Trạng thái:** Chưa triển khai.
+**Trạng thái:** Đã triển khai tùy chọn.
 
-Pipeline nên đọc bảng tra cứu khu vực để hiển thị tên khu vực thay cho mã.
-
-**Tiêu chí nghiệm thu**
-
-- Lookup được nối riêng cho khu vực đón và khu vực trả.
-- Bản ghi không tìm thấy mã khu vực được đếm và báo cáo; không âm thầm làm mất chuyến.
-- Báo cáo phân biệt mã khu vực nguồn và tên khu vực sau khi nối.
-- Phiên bản và nguồn của lookup được ghi nhận.
-
-#### FR-12 — Kiểm tra tính đầy đủ của bộ dữ liệu
-
-**Trạng thái:** Cần bổ sung.
-
-Khi người dùng chọn chế độ chạy toàn bộ dữ liệu, pipeline nên phát hiện thiếu tệp tháng trong phạm vi 01/2019–06/2020.
+Pipeline đọc lookup taxi zone khi có cấu hình hoặc tệp lookup theo vị trí mặc định; nếu không có lookup, kết quả vẫn giữ mã khu vực.
 
 **Tiêu chí nghiệm thu**
 
-- Chế độ chạy toàn bộ có danh sách kỳ vọng gồm 18 tháng.
-- Thiếu tháng được nêu rõ trong log hoặc báo cáo.
-- Chạy thử một tệp vẫn được phép mà không yêu cầu đủ 18 tháng.
-
-### Nice-to-have
-
-Chưa xác định yêu cầu chức năng bổ sung ngoài phạm vi trên. Các tính năng Nice-to-have chỉ được đưa vào backlog sau khi nhóm thống nhất nhu cầu và không làm ảnh hưởng các tiêu chí Must-have.
+- Lookup được nối riêng cho khu vực đón và trả.
+- Số bản ghi không khớp và khóa lookup trùng được ghi nhận.
+- Khi lookup không có, báo cáo khu vực dùng mã thay cho tên.
 
 ## 9. Yêu cầu phi chức năng
 
@@ -294,11 +287,13 @@ Chưa xác định yêu cầu chức năng bổ sung ngoài phạm vi trên. Cá
 
 ### Nguồn và phạm vi
 
-- Bộ dữ liệu: New York Yellow Taxi Trip Data trên Kaggle.
-- Nguồn gốc dữ liệu: NYC Taxi & Limousine Commission (TLC).
-- Phạm vi: 18 tệp theo tháng, từ 01/2019 đến 06/2020.
-- Định dạng đầu vào hiện tại: CSV có header.
-- Bảng tra cứu khu vực có trong nguồn dữ liệu nhưng chưa được pipeline hiện tại đọc.
+- Bộ dữ liệu: New York Yellow Taxi Trip Data trên Kaggle; bộ có thêm các tháng năm 2019.
+- Nguồn gốc: NYC Taxi & Limousine Commission (TLC).
+- Phạm vi pipeline: đúng sáu tệp `yellow_tripdata_2020-01.csv` đến `yellow_tripdata_2020-06.csv`.
+- Cấu hình mặc định dùng glob `yellow_tripdata_2020-0[1-6].csv`, vì vậy CSV 2019 khác trong thư mục không được đọc.
+- Định dạng đầu vào: CSV có header.
+- Schema taxi vàng gồm 18 cột; con số này là số trường mỗi dòng, không phải số lượng tệp.
+- Bảng tra cứu khu vực là đầu vào tùy chọn.
 
 ### Schema hiện tại
 
@@ -331,46 +326,18 @@ Các khoản tiền được giữ theo đơn vị nguồn là USD. Timestamp v�
 
 ### Hiện trạng
 
-```text
-18 tệp CSV
-    │
-    ▼
-data/raw/nyc_taxi/
-    │  PySpark đọc theo schema 18 cột
-    ▼
-data/bronze/raw/
-    │  Parquet Snappy; đọc lại và đối soát schema/số dòng
-    ▼
-data/silver/cleaned/
-    │  Bỏ null bắt buộc, loại trùng chính xác,
-    │  chuẩn hóa cờ và kiểm tra chất lượng
-    ├── reports/generated/taxi_quality.json
-    └── reports/generated/taxi_quality.md
-```
+Sáu CSV tháng 01–06/2020 → Bronze Parquet → Silver Parquet và báo cáo chất lượng → taxi features → zone enrichment tùy chọn → processed Gold Parquet → bảy bảng aggregation Parquet, CSV, báo cáo Markdown và biểu đồ.
 
-### Trạng thái mục tiêu
-
-```text
-Raw CSV
-  → Bronze Parquet
-  → Silver Parquet + báo cáo chất lượng
-  → Gold Parquet
-      ├── Tổng hợp thời gian
-      ├── Tổng hợp khu vực đón/trả
-      ├── Thống kê chuyến đi và thanh toán
-      └── So sánh các giai đoạn
-```
-
-Lớp Gold và các phép tổng hợp là phần phát triển tiếp theo, chưa có trong pipeline hiện tại.
+Pipeline hiện có đầy đủ các bước trên. Tất cả phép tổng hợp dùng bộ dữ liệu đã làm sạch và feature-engineer; pipeline không đọc CSV năm 2019.
 
 ## 12. Quy tắc chất lượng và xác thực dữ liệu
 
 ### 12.1 Kiểm tra đầu vào
 
-- Bắt buộc có đường dẫn đầu vào khớp ít nhất một tệp.
-- Định dạng đọc phải thuộc loại reader hỗ trợ.
-- CSV phải có header theo cấu hình.
-- Schema taxi vàng hiện tại gồm 18 trường theo định nghĩa trong mã.
+- Cấu hình mặc định chọn `yellow_tripdata_2020-0[1-6].csv`.
+- Preflight yêu cầu đúng sáu file: `yellow_tripdata_2020-01.csv` đến `yellow_tripdata_2020-06.csv`.
+- Tệp thiếu, glob rỗng, định dạng không phải CSV, phần tử khớp không phải file hoặc tên ngoài phạm vi khiến pipeline dừng trước khi tạo Spark session.
+- CSV phải có header theo cấu hình và schema taxi vàng 18 trường.
 - Lỗi parse dữ liệu không hợp lệ phải làm pipeline thất bại theo chế độ `FAILFAST`.
 - Trường số để trống có thể trở thành null; không tự điền bằng 0 hoặc trung bình.
 
@@ -417,27 +384,23 @@ Báo cáo JSON và Markdown phải thể hiện:
 
 ## 13. Lưu ý kỹ thuật
 
-- Pipeline hiện chạy Spark local với cấu hình mặc định `local[*]`.
+- Pipeline chạy Spark local với cấu hình mặc định `local[*]`, timezone `America/New_York`.
 - Cấu hình có giới hạn `spark.sql.files.maxPartitionBytes`; giá trị cần được đánh giá với tài nguyên máy chạy thực tế.
-- Bronze và Silver đang được ghi theo chế độ overwrite; chạy lại sẽ thay thế dữ liệu hiện có tại các đường dẫn này.
-- Pipeline chỉ xử lý CSV chuyến đi trong cấu hình mặc định; bảng tra cứu và dữ liệu vùng chưa được nạp.
-- Không có khóa chuyến ổn định nên không thể khẳng định hai bản ghi giống một phần là cùng một chuyến.
-- Thứ tự bản ghi trong Parquet không được xem là thứ tự nghiệp vụ.
-- Cần thống nhất múi giờ trước khi tạo các nhóm theo giờ/ngày.
-- So sánh cả năm 2019 với sáu tháng đầu năm 2020 có độ dài kỳ khác nhau; phân tích xu hướng nên ưu tiên so sánh cùng kỳ tháng 01–06.
+- Bronze và Silver được ghi đè khi chạy lại.
+- Zone lookup được dùng khi có cấu hình hoặc tệp lookup theo vị trí mặc định; khi không có, pipeline vẫn tạo bảng theo mã khu vực.
+- Không có khóa chuyến ổn định nên chỉ loại bản ghi trùng khi cả 18 trường nguồn giống nhau.
+- Giá trị bất thường được ghi cảnh báo; không tự động loại khỏi Silver.
+- Các báo cáo mô tả dữ liệu trong sáu tháng đầu năm 2020, không so sánh với năm 2019.
 
-## 14. Tiến độ và mốc thực hiện đề xuất
+## 14. Tiến độ và mốc thực hiện
 
-| Giai đoạn | Nội dung | Kết quả |
+| Giai đoạn | Nội dung | Trạng thái |
 |---|---|---|
-| **0 — Đã hoàn thành** | Đọc CSV, schema 18 cột, ghi Bronze, làm sạch Silver và báo cáo chất lượng | Pipeline Raw → Bronze → Silver hiện có |
-| **1 — Hoàn thiện tiêu chí Gold** | Chốt timezone, quy tắc mã khu vực, kỳ so sánh và grain các bảng | Đặc tả Gold được nhóm duyệt |
-| **2 — Gold theo thời gian và khu vực** | Tổng hợp tháng/ngày/giờ và mã khu vực đón/trả | Các bảng Gold đầu tiên |
-| **3 — Gold theo đặc điểm chuyến đi** | Thống kê quãng đường, cước, tip và phương thức thanh toán | Các bảng phân bố và cơ cấu thanh toán |
-| **4 — Kiểm thử và đối soát** | Kiểm tra trên mẫu nhỏ, đối soát tổng số, chạy toàn bộ dữ liệu | Báo cáo nghiệm thu pipeline |
-| **5 — Demo và hoàn thiện tài liệu** | Tổng hợp kết quả, giới hạn và hướng phát triển | Demo học phần và tài liệu dự án |
-
-Thời lượng từng giai đoạn cần được ước lượng sau khi nhóm xác nhận lịch học, tài nguyên máy và trạng thái dữ liệu đầu vào.
+| **1 — Ingestion và cleaning** | Đọc sáu CSV, schema, Bronze, Silver và báo cáo chất lượng | Đã triển khai |
+| **2 — Taxi features và processed output** | Feature engineering, zone lookup tùy chọn, Parquet phân vùng | Đã triển khai |
+| **3 — Aggregation và export** | Bảy bảng Gold, CSV, báo cáo Markdown và biểu đồ | Đã triển khai |
+| **4 — Benchmark** | Script benchmark Spark persistence và Spark/Pandas | Đã triển khai; kết quả cần đo trên máy mục tiêu |
+| **5 — Chạy dữ liệu thật và demo** | Chạy đủ sáu file, lưu baseline môi trường và chuẩn bị trình bày | Việc cần hoàn tất theo môi trường nhóm |
 
 ## 15. Rủi ro, giả định và câu hỏi mở
 
@@ -445,38 +408,34 @@ Thời lượng từng giai đoạn cần được ước lượng sau khi nhóm
 
 | Rủi ro | Ảnh hưởng | Hướng xử lý |
 |---|---|---|
-| Dung lượng dữ liệu vượt tài nguyên máy local | Chạy chậm hoặc thiếu bộ nhớ/ổ đĩa | Chạy thử một tháng, ghi nhận baseline và điều chỉnh partition |
-| Schema thay đổi giữa các tệp hoặc phiên bản dữ liệu | Lỗi đọc hoặc sai ánh xạ cột | Kiểm tra header và schema trước khi chạy toàn bộ |
-| Không có khóa chuyến ổn định | Không thể phát hiện mọi bản ghi trùng nghiệp vụ | Giữ quy tắc loại trùng toàn dòng và ghi rõ giới hạn |
-| Mã khu vực không ánh xạ được qua lookup | Báo cáo theo tên khu vực thiếu hoặc sai | Đếm mã không khớp và bảo toàn bản ghi |
-| Giá trị âm có ý nghĩa nghiệp vụ | Loại nhầm dữ liệu điều chỉnh | Tiếp tục giữ cảnh báo trong Silver; chỉ lọc khi có quy tắc được duyệt |
-| So sánh hai kỳ không tương đương | Diễn giải sai khác biệt | So sánh cùng kỳ tháng 01–06 và ghi rõ phạm vi |
-| Timestamp/múi giờ không được thống nhất | Sai nhóm theo ngày hoặc giờ | Chốt cách xử lý timestamp trước khi triển khai Gold |
+| Dung lượng sáu tệp vượt tài nguyên máy local | Chạy chậm hoặc thiếu bộ nhớ/ổ đĩa | Chạy benchmark trên máy mục tiêu và điều chỉnh partition |
+| Header hoặc schema thay đổi giữa các tệp | Lỗi đọc hoặc sai ánh xạ cột | Kiểm tra schema 18 trường và dùng `FAILFAST` |
+| Không có khóa chuyến ổn định | Không thể phát hiện mọi bản ghi trùng nghiệp vụ | Chỉ loại trùng toàn dòng và ghi rõ giới hạn |
+| Mã khu vực không ánh xạ được qua lookup | Báo cáo theo tên khu vực thiếu | Đếm mã không khớp và giữ chuyến |
+| Giá trị âm có ý nghĩa nghiệp vụ | Loại nhầm dữ liệu điều chỉnh | Giữ bản ghi và ghi cảnh báo |
+| Timestamp có khác biệt theo DST | Sai nhóm theo ngày hoặc giờ | Dùng timezone `America/New_York` nhất quán |
 
 ### Giả định
 
-- Các tệp đầu vào đúng là bộ NYC Yellow Taxi Trip Data theo phạm vi tháng 01/2019–06/2020.
-- Các tệp CSV có header và tương thích với schema 18 cột trong mã hiện tại.
-- Máy chạy có Python 3.10+, PySpark 3.5.x, Java 11 hoặc 17 và đủ dung lượng để lưu Parquet trung gian.
-- Phân tích ở lớp Gold là phân tích mô tả; không nhằm chứng minh nguyên nhân của các thay đổi.
+- Người dùng có đủ sáu tệp CSV từ 01/2020 đến 06/2020.
+- Các tệp có header và tương thích schema taxi vàng 18 cột.
+- Máy chạy có Python 3.10+, PySpark 3.5.x, Java 11 hoặc 17 và dung lượng phù hợp.
+- Phân tích Gold là mô tả trong phạm vi dữ liệu đã chọn.
 
 ### Câu hỏi mở
 
-1. Máy mục tiêu có bao nhiêu RAM và dung lượng ổ đĩa khả dụng?
-2. Có cần hiển thị tên khu vực trong báo cáo Gold hay chỉ cần mã `PULocationID`/`DOLocationID`?
-3. Các mã khu vực nhỏ hơn hoặc bằng 0 có bị loại khỏi thống kê Gold hay được gom thành nhóm riêng?
-4. Kỳ so sánh chính sẽ là 01–06/2019 với 01–06/2020, hay cả năm 2019 với nửa đầu 2020?
-5. Cần định nghĩa histogram cho quãng đường và tiền cước theo các khoảng cố định hay chỉ cần thống kê mô tả?
-6. Múi giờ nào được dùng khi nhóm chuyến theo giờ và ngày?
+1. Máy mục tiêu có bao nhiêu RAM và dung lượng ổ đĩa khả dụng để ghi nhận baseline?
+2. Khi demo, nhóm có cung cấp lookup taxi zone để hiển thị tên khu vực hay chỉ dùng mã?
 
 ## 16. Phụ thuộc
 
-- **Dữ liệu:** 18 tệp CSV tháng và bảng lookup khu vực nếu triển khai tổng hợp theo tên.
-- **Nguồn dữ liệu:** Bộ New York Yellow Taxi Trip Data trên Kaggle; dữ liệu gốc từ NYC TLC.
+- **Dữ liệu bắt buộc:** sáu CSV tháng 01–06/2020.
+- **Dữ liệu tùy chọn:** bảng lookup taxi zone.
+- **Nguồn:** New York Yellow Taxi Trip Data trên Kaggle; dữ liệu gốc từ NYC TLC.
 - **Runtime:** Python 3.10+, PySpark 3.5.x, Java 11/17.
 - **Cấu hình:** `configs/config.example.yaml` và cấu hình cục bộ `configs/config.yaml`.
-- **Hạ tầng:** Quyền đọc dữ liệu Raw, quyền ghi các thư mục Bronze/Silver/Gold và reports.
-- **Kiểm thử:** Dữ liệu mẫu đủ nhỏ để kiểm tra logic mà không cần xử lý toàn bộ bộ dữ liệu.
+- **Hạ tầng:** quyền đọc dữ liệu Raw, quyền ghi Bronze/Silver/Gold và reports.
+- **Kiểm thử:** fixtures nhỏ dùng trong CI; chạy trên đủ sáu tệp là bước xác nhận với dữ liệu thật.
 
 ## 17. Phụ lục
 

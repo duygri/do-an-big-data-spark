@@ -1,5 +1,7 @@
 # Taxi aggregations and report outputs
 
+The pipeline aggregates only the six required taxi CSV files for January–June 2020. It does not compare results with 2019.
+
 The normal pipeline creates these outputs after feature engineering and the processed taxi Parquet write:
 
 - Gold Parquet tables: `paths.aggregations` (default `data/gold/aggregations`). Each table is written under its own directory and read back to verify column names, Spark data types, and row count.
@@ -25,9 +27,6 @@ The sample config sets the output paths explicitly. If omitted, aggregation outp
 | `pickup_zones`, `dropoff_zones` | normalized location ID | `location_id`, `zone_label`, `borough`, `trip_count`, `trip_rank` |
 | `trip_metric_stats` | metric (`trip_distance`, `fare_amount`, `tip_amount`) | `metric_name`, `observation_count`, `min_value`, `mean_value`, `median_approx`, `max_value`, `stddev` |
 | `payment_mix` | payment code, including unknown | `payment_type`, `trip_count`, `share_percent` |
-| `same_month_comparison` | overlapping pickup month from 1 through 6 | `pickup_month`, followed by each of `trip_count`, `total_fare_amount`, `avg_fare_amount`, `total_tip_amount`, `avg_tip_amount`, `avg_trip_distance` with `_2019`, `_2020`, `_delta`, and `_pct_delta` columns |
-
-The comparison delta is 2020 minus 2019. A percentage delta is null when the 2019 value is zero. Only months present in both years are emitted; an empty comparison is valid and is called out in the Markdown report. The comparison is descriptive and does not establish causality.
 
 ## Data handling rules
 

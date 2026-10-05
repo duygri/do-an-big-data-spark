@@ -65,14 +65,14 @@ def taxi_frame(spark):
         ]
     )
     rows = [
-        (datetime(2019, 1, 15, 10, tzinfo=NY), 2019, 1, 10, 3, 1, 2, 1.0, 10.0, 2.0, 1),
-        (datetime(2019, 1, 15, 11, tzinfo=NY), 2019, 1, 11, 3, 1, 3, 2.0, 20.0, None, None),
-        (datetime(2019, 2, 15, 12, tzinfo=NY), 2019, 2, 12, 6, -1, None, -1.0, -5.0, -2.0, 2),
+        (datetime(2020, 1, 15, 10, tzinfo=NY), 2020, 1, 10, 3, 1, 2, 1.0, 10.0, 2.0, 1),
+        (datetime(2020, 1, 15, 11, tzinfo=NY), 2020, 1, 11, 3, 1, 3, 2.0, 20.0, None, None),
+        (datetime(2020, 2, 15, 12, tzinfo=NY), 2020, 2, 12, 6, -1, None, -1.0, -5.0, -2.0, 2),
         (datetime(2020, 1, 6, 8, tzinfo=NY), 2020, 1, 8, 2, 2, 4, 2.0, 30.0, 3.0, 2),
         # DST starts in New York: this pickup is still in hour 1 on Sunday.
         (datetime(2020, 3, 8, 1, 50, tzinfo=NY), 2020, 3, 1, 1, None, 0, None, 40.0, 4.0, 1),
         (datetime(2020, 6, 10, 16, tzinfo=NY), 2020, 6, 16, 4, 0, 5, 5.0, 50.0, 5.0, 1),
-        (datetime(2019, 5, 7, 9, tzinfo=NY), 2019, 5, 9, 3, 0, -1, 0.0, 0.0, 0.0, None),
+        (datetime(2020, 5, 7, 9, tzinfo=NY), 2020, 5, 9, 3, 0, -1, 0.0, 0.0, 0.0, None),
         (datetime(2020, 5, 8, 10, tzinfo=NY), 2020, 5, 10, 6, 3, 0, 1.0, 5.0, 1.0, 1),
     ]
     return spark.createDataFrame(rows, schema)
@@ -94,13 +94,13 @@ def test_aggregate_taxi_trips_builds_time_tables_and_reconciles_counts(spark):
         for row in tables.trips_by_month.collect()
     }
     assert {key: row.trip_count for key, row in month_rows.items()} == {
-        (2019, 1): 2, (2019, 2): 1, (2019, 5): 1,
-        (2020, 1): 1, (2020, 3): 1, (2020, 5): 1, (2020, 6): 1,
+        (2020, 1): 3, (2020, 2): 1, (2020, 3): 1,
+        (2020, 5): 2, (2020, 6): 1,
     }
-    assert month_rows[(2019, 1)].total_fare_amount == 30.0
-    assert month_rows[(2019, 1)].avg_fare_amount == 15.0
-    assert month_rows[(2019, 1)].total_tip_amount == 2.0
-    assert month_rows[(2019, 1)].avg_tip_amount == 2.0
+    assert month_rows[(2020, 1)].total_fare_amount == 60.0
+    assert month_rows[(2020, 1)].avg_fare_amount == 20.0
+    assert month_rows[(2020, 1)].total_tip_amount == 5.0
+    assert month_rows[(2020, 1)].avg_tip_amount == 2.5
 
     assert {
         row.pickup_day_of_week: row.trip_count
@@ -247,42 +247,3 @@ def test_payment_mix_includes_nulls_in_denominator(spark):
     assert payment["unknown"].share_percent == 25.0
     assert sum(row.trip_count for row in payment.values()) == 8
     assert sum(row.share_percent for row in payment.values()) == pytest.approx(100.0)
-
-
-def test_same_month_comparison_uses_only_overlapping_jan_to_jun_months(spark):
-    tables = aggregate_taxi_trips(taxi_frame(spark))
-    metrics = (
-        "trip_count", "total_fare_amount", "avg_fare_amount", "total_tip_amount",
-        "avg_tip_amount", "avg_trip_distance",
-    )
-    expected_columns = ["pickup_month"] + [
-        f"{metric}_{suffix}"
-        for metric in metrics
-        for suffix in ("2019", "2020", "delta", "pct_delta")
-    ]
-    assert tables.same_month_comparison.columns == expected_columns
-    rows = {row.pickup_month: row for row in tables.same_month_comparison.collect()}
-    assert set(rows) == {1, 5}
-
-    january = rows[1]
-    assert january.trip_count_2019 == 2
-    assert january.trip_count_2020 == 1
-    assert january.trip_count_delta == -1
-    assert january.trip_count_pct_delta == -50.0
-    assert january.total_fare_amount_2019 == 30.0
-    assert january.total_fare_amount_2020 == 30.0
-    assert january.total_fare_amount_delta == 0.0
-    assert january.avg_fare_amount_pct_delta == 100.0
-    assert january.avg_trip_distance_2019 == 1.5
-    assert january.avg_trip_distance_2020 == 2.0
-    assert january.avg_trip_distance_pct_delta == pytest.approx(100 / 3)
-
-    may = rows[5]
-    assert may.total_fare_amount_2019 == 0.0
-    assert may.total_fare_amount_2020 == 5.0
-    assert may.total_fare_amount_delta == 5.0
-    assert may.total_fare_amount_pct_delta is None
-    assert may.avg_trip_distance_pct_delta is None
-
-
-

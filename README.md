@@ -2,7 +2,7 @@
 
 Dự án môn **Nhập dữ liệu lớn**, xây dựng pipeline batch để nhập và xử lý dữ liệu chuyến taxi vàng tại New York bằng Python và Apache Spark (PySpark). Pipeline đọc dữ liệu CSV qua Bronze, làm sạch sang Silver, tạo đặc trưng chuyến đi, bổ sung nhãn khu vực đón/trả và ghi Parquet đã xử lý vào Gold.
 
-> **Trạng thái:** Pipeline tạo Bronze, Silver, báo cáo chất lượng, feature taxi, zone enrichment tùy chọn, processed Gold và tám bảng tổng hợp taxi Gold; báo cáo Markdown, CSV và biểu đồ được sinh cùng lần chạy.
+> **Trạng thái:** Pipeline xử lý đúng sáu tệp taxi tháng 01–06/2020, tạo Bronze, Silver, báo cáo chất lượng, feature taxi, zone enrichment tùy chọn, processed Gold và bảy bảng tổng hợp; báo cáo Markdown, CSV và biểu đồ được sinh cùng lần chạy.
 
 ## Mục tiêu đề tài
 
@@ -16,22 +16,22 @@ Dự án môn **Nhập dữ liệu lớn**, xây dựng pipeline batch để nh�
 - Số chuyến thay đổi như thế nào theo tháng, ngày trong tuần và giờ trong ngày?
 - Những khu vực nào có nhiều chuyến đón hoặc trả nhất?
 - Quãng đường, tiền cước, tiền tip và phương thức thanh toán phân bố ra sao?
-- Các chỉ số trên khác nhau thế nào trong những tháng tương ứng có dữ liệu từ tháng 01 đến tháng 06 năm 2019 và 2020?
+- Các chỉ số taxi thay đổi như thế nào trong sáu tháng đầu năm 2020?
 
-Pipeline tạo kết quả cho các câu hỏi trên. So sánh 2019–2020 chỉ dùng các tháng tương ứng có mặt ở cả hai năm và được diễn giải mô tả.
+Pipeline tạo kết quả cho các câu hỏi trên trên dữ liệu tháng 01–06/2020. Phạm vi này không bao gồm so sánh với năm 2019.
 
 ## Dữ liệu
 
-Nguồn dữ liệu chính là bộ [New York Yellow Taxi Trip Data trên Kaggle](https://www.kaggle.com/datasets/microize/newyork-yellow-taxi-trip-data-2020-2019), gồm 18 tệp CSV theo tháng từ **01/2019 đến 06/2020**. Bộ dữ liệu do NYC Taxi & Limousine Commission (TLC) công bố; xem thêm [trang dữ liệu chuyến đi của TLC](https://www.nyc.gov/site/tlc/about/tlc-trip-record-data.page).
+Nguồn dữ liệu là bộ [New York Yellow Taxi Trip Data trên Kaggle](https://www.kaggle.com/datasets/microize/newyork-yellow-taxi-trip-data-2020-2019). Bộ Kaggle có 18 tệp CSV theo tháng từ 01/2019 đến 06/2020; pipeline của repo chỉ đọc sáu tệp từ **01/2020 đến 06/2020**. Dữ liệu do NYC Taxi & Limousine Commission (TLC) công bố; xem thêm [trang dữ liệu chuyến đi của TLC](https://www.nyc.gov/site/tlc/about/tlc-trip-record-data.page).
 
-Các trường được pipeline sử dụng gồm thời điểm đón/trả, số hành khách, quãng đường, mã khu vực đón/trả, loại thanh toán và các khoản cước/phụ phí. Schema hiện khai báo 18 cột trong `src/ingestion/schema.py`. Pipeline dùng bảng `taxi+_zone_lookup.csv` để bổ sung tên khu vực; dữ liệu shapefile chưa được đọc.
+Các trường được pipeline sử dụng gồm thời điểm đón/trả, số hành khách, quãng đường, mã khu vực đón/trả, loại thanh toán và các khoản cước/phụ phí. Schema hiện khai báo 18 cột trong `src/ingestion/schema.py`. Nếu có `taxi+_zone_lookup.csv`, pipeline dùng bảng này để bổ sung tên khu vực; nếu không có, pipeline vẫn chạy với mã khu vực. Dữ liệu shapefile chưa được đọc.
 
-Tải dữ liệu từ Kaggle, giải nén và đặt các tệp `yellow_tripdata_*.csv` vào `data/raw/nyc_taxi/`. Dữ liệu gốc và dữ liệu sinh ra không được đưa vào Git vì dung lượng lớn.
+Tải dữ liệu từ Kaggle, giải nén đúng sáu tệp `yellow_tripdata_2020-01.csv` đến `yellow_tripdata_2020-06.csv` vào `data/raw/nyc_taxi/`. Cấu hình mặc định chỉ chọn các tháng này; các tệp 2019 khác có thể nằm cùng thư mục nhưng không khớp glob đầu vào. Dữ liệu thô và dữ liệu sinh ra không được đưa vào Git.
 
 ## Pipeline
 
 ```text
-18 tệp CSV
+6 tệp CSV (01–06/2020)
    │
    ▼
 data/raw/nyc_taxi/
@@ -45,8 +45,8 @@ data/silver/cleaned/   Làm sạch và kiểm tra chất lượng
    └── reports/generated/taxi_quality.md
    │
    ▼
-data/gold/taxi_trips/  Feature engineering + zone enrichment, Parquet theo năm/tháng đón
-data/gold/aggregations/  Tám bảng Gold tổng hợp taxi, Parquet
+data/gold/taxi_trips/  Feature engineering + zone enrichment (tùy chọn), Parquet theo năm/tháng đón
+data/gold/aggregations/  Bảy bảng
 reports/generated/taxi_aggregations/  CSV, báo cáo Markdown và biểu đồ tổng hợp
 ```
 
@@ -85,14 +85,14 @@ Nếu dùng macOS/Linux, kích hoạt môi trường ảo bằng `source .venv/b
 
 ### 2. Chuẩn bị dữ liệu và cấu hình
 
-1. Tải bộ dữ liệu từ [Kaggle](https://www.kaggle.com/datasets/microize/newyork-yellow-taxi-trip-data-2020-2019), giải nén các tệp tháng cần dùng vào `data/raw/nyc_taxi/`.
+1. Tải bộ dữ liệu từ Kaggle và giải nén sáu tệp tháng 01–06/2020 vào `data/raw/nyc_taxi/`.
 2. Sao chép cấu hình mẫu:
 
    ```powershell
    Copy-Item configs/config.example.yaml configs/config.yaml
    ```
 
-3. Nếu cần chạy thử nhanh, sửa `input.path` trong `configs/config.yaml` để trỏ đến một tệp CSV, ví dụ `data/raw/nyc_taxi/yellow_tripdata_2020-04.csv`. Mặc định, cấu hình đọc tất cả tệp khớp với `yellow_tripdata_*.csv`.
+3. Cấu hình mặc định chọn `yellow_tripdata_2020-0[1-6].csv`. Pipeline yêu cầu đủ đúng sáu tệp tháng 01–06/2020 trước khi Spark khởi động; không trỏ `input.path` tới một tệp đơn hoặc các tháng khác.
 
 ### 3. Chạy pipeline
 
@@ -104,7 +104,7 @@ python -m src.pipeline.main --config configs/config.yaml
 
 Các đường dẫn trong cấu hình được tính từ thư mục hiện hành. Pipeline hiện chạy ở chế độ local bằng `local[*]`; có thể thay đổi Spark master và một số tuỳ chọn trong file cấu hình.
 
-Pipeline cũng ghi tám bảng Gold vào `paths.aggregations` (mặc định `data/gold/aggregations`) và report vào `paths.analysis_reports` (mặc định `reports/generated/taxi_aggregations`). `aggregation.top_n` (mặc định `10`) chỉ giới hạn số khu vực trên biểu đồ; Parquet và CSV giữ mọi khu vực. Chi tiết grain, cột, quy tắc null và biểu đồ nằm trong [docs/aggregations.md](docs/aggregations.md).
+Pipeline cũng ghi bảy bảng Gold vào `paths.aggregations` (mặc định `data/gold/aggregations`) và report vào `paths.analysis_reports` (mặc định `reports/generated/taxi_aggregations`). `aggregation.top_n` (mặc định `10`) chỉ giới hạn số khu vực trên biểu đồ; Parquet và CSV giữ mọi khu vực. Chi tiết grain, cột, quy tắc null và biểu đồ nằm trong [docs/aggregations.md](docs/aggregations.md).
 
 Benchmark persistence Spark chạy riêng, không nằm trong pipeline thường ngày:
 
@@ -124,9 +124,9 @@ python scripts/benchmark_spark_aggregation.py `
 | `reports/generated/taxi_quality.json` | Báo cáo chất lượng dạng JSON. |
 | `reports/generated/taxi_quality.md` | Tóm tắt báo cáo chất lượng dạng Markdown. |
 | `data/gold/taxi_trips/` | Chuyến taxi đã tạo đặc trưng và bổ sung nhãn khu vực, phân vùng theo năm/tháng đón. |
-| `data/gold/aggregations/` | Tám bảng Parquet: theo tháng, weekday, giờ, zone đón/trả, thống kê metric, payment mix và so sánh tháng tương ứng. |
+| `data/gold/aggregations/` | Bảy bảng Parquet: theo tháng, weekday, giờ, zone đón/trả, thống kê metric và payment mix. |
 | `reports/generated/taxi_aggregations/csv/` | Một CSV có header cho mỗi bảng tổng hợp. |
-| `reports/generated/taxi_aggregations/taxi_aggregation_report.md` | Định nghĩa metric, phạm vi ngày, quy tắc dữ liệu và tóm tắt kỳ so sánh. |
+| `reports/generated/taxi_aggregations/taxi_aggregation_report.md` | Định nghĩa metric, phạm vi ngày và quy tắc dữ liệu. |
 | `reports/generated/taxi_aggregations/charts/` | `monthly_trips.png`, top pickup/dropoff zones và `payment_mix.png`. |
 
 ## Cấu trúc repository

@@ -5,7 +5,6 @@ input:
   format: csv
   schema: yellow_taxi
   header: true
-  zone_lookup_path: data/raw/nyc_taxi/taxi+_zone_lookup.csv
 
 paths:
   raw: data/raw

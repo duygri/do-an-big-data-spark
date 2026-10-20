@@ -11,6 +11,7 @@ import matplotlib
 
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
+from matplotlib.ticker import FuncFormatter
 from pyspark.sql import DataFrame
 
 from src.aggregation.taxi import TaxiAggregationTables
@@ -47,17 +48,47 @@ def _display_zone(row: dict[str, Any]) -> str:
     return "Unknown/Invalid" if location_id is None else str(location_id)
 
 
-def _save_monthly_chart(rows: list[dict[str, Any]], destination: Path) -> None:
-    ordered = sorted(rows, key=lambda row: (row.get("pickup_year") or 0, row.get("pickup_month") or 0))
-    labels = [f"{row['pickup_year']}-{row['pickup_month']:02d}" for row in ordered]
-    values = [row["trip_count"] for row in ordered]
+def _save_monthly_chart(
+    rows: list[dict[str, Any]],
+    destination: Path,
+    selected_months: tuple[tuple[int, int], ...] | None = None,
+) -> None:
+    if selected_months is None:
+        ordered = sorted(
+            rows,
+            key=lambda row: (row.get("pickup_year") or 0, row.get("pickup_month") or 0),
+        )
+        labels = [f"{row['pickup_year']}-{row['pickup_month']:02d}" for row in ordered]
+        values = [row["trip_count"] for row in ordered]
+    else:
+        counts_by_month = {
+            (row["pickup_year"], row["pickup_month"]): row["trip_count"]
+            for row in rows
+            if row.get("pickup_year") is not None and row.get("pickup_month") is not None
+        }
+        ordered_months = sorted(set(selected_months))
+        labels = [f"{year}-{month:02d}" for year, month in ordered_months]
+        values = [counts_by_month.get(month, 0) for month in ordered_months]
     fig, axis = plt.subplots(figsize=(10, 4.5))
-    if rows:
+    if labels and any(values):
         axis.plot(labels, values, marker="o")
         axis.tick_params(axis="x", rotation=45)
-        axis.set_ylabel("Trips")
+        axis.set_ylim(bottom=0)
+        axis.yaxis.set_major_formatter(
+            FuncFormatter(lambda value, _position: f"{value / 1_000_000:.1f}")
+        )
+        axis.set_ylabel("Trips (millions)")
         axis.set_xlabel("Pickup month")
-        axis.set_title("Taxi trips by month")
+        axis.set_title("Taxi trips by selected month")
+        for label, value in zip(labels, values):
+            axis.annotate(
+                f"{value / 1_000_000:.2f}M",
+                (label, value),
+                textcoords="offset points",
+                xytext=(0, 8),
+                ha="center",
+                fontsize=8,
+            )
     else:
         axis.text(0.5, 0.5, "No monthly trip data", ha="center", va="center")
         axis.set_axis_off()
@@ -121,7 +152,9 @@ def _date_coverage(month_rows: list[dict[str, Any]]) -> str:
 
 
 def _write_markdown(
-    rows_by_table: dict[str, list[dict[str, Any]]], destination: Path
+    rows_by_table: dict[str, list[dict[str, Any]]],
+    destination: Path,
+    selected_months: tuple[tuple[int, int], ...] | None = None,
 ) -> None:
     month_rows = rows_by_table["trips_by_month"]
     total_trips = sum(row["trip_count"] for row in month_rows)
@@ -148,6 +181,26 @@ def _write_markdown(
         "- `trip_metric_stats`: non-null observation count, min, mean, approximate median (Spark accuracy 10,000), max, and sample standard deviation for distance, fare, and tip.",
         "- `payment_mix`: trip count and share of all trips; null payment type is included as `unknown` in the denominator.",
     ]
+    if selected_months is not None:
+        ordered_months = sorted(set(selected_months))
+        selected_set = set(ordered_months)
+        excluded_from_chart = sum(
+            row["trip_count"]
+            for row in month_rows
+            if (row.get("pickup_year"), row.get("pickup_month")) not in selected_set
+        )
+        selected_label = ", ".join(
+            f"{year}-{month:02d}" for year, month in ordered_months
+        ) or "none"
+        lines.extend(
+            [
+                "",
+                "## Monthly chart scope",
+                "",
+                f"- Selected input month(s): {selected_label}.",
+                f"- Trips with pickup timestamps outside the selected input months omitted from the monthly chart: {excluded_from_chart:,}; they remain in the underlying datasets and other summaries.",
+            ]
+        )
     if not has_zone_labels:
         lines.append(
             "- Zone lookup labels are unavailable; results show location IDs instead of names."
@@ -166,6 +219,7 @@ def export_taxi_aggregations(
     gold_path: str,
     reports_path: str,
     top_n: int = 10,
+    selected_months: tuple[tuple[int, int], ...] | None = None,
 ) -> AggregationExportReport:
     """Write each Gold table, verify Parquet read-back, and render small reports."""
     if top_n <= 0:
@@ -207,7 +261,7 @@ def export_taxi_aggregations(
         rows_by_table[name] = rows
 
     markdown_path = reports_root / "taxi_aggregation_report.md"
-    _write_markdown(rows_by_table, markdown_path)
+    _write_markdown(rows_by_table, markdown_path, selected_months)
 
     chart_files = {
         "monthly_trips": chart_root / "monthly_trips.png",
@@ -215,7 +269,11 @@ def export_taxi_aggregations(
         "top_dropoff_zones": chart_root / "top_dropoff_zones.png",
         "payment_mix": chart_root / "payment_mix.png",
     }
-    _save_monthly_chart(rows_by_table["trips_by_month"], chart_files["monthly_trips"])
+    _save_monthly_chart(
+        rows_by_table["trips_by_month"],
+        chart_files["monthly_trips"],
+        selected_months,
+    )
     _save_zone_chart(
         rows_by_table["pickup_zones"], chart_files["top_pickup_zones"],
         "Top pickup zones", top_n,

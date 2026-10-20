@@ -1,6 +1,6 @@
 # Taxi aggregations and report outputs
 
-The pipeline aggregates only the six required taxi CSV files for January–June 2020. It does not compare results with 2019.
+The pipeline aggregates whichever supported monthly CSV files are selected by `input.path`: one month, a subset, or all six months from January–June 2020. The default is the full six-month window. It does not compare results with 2019, and the report records the actual pickup-date coverage from the selected data. The monthly chart shows only pickup months corresponding to the selected source files; records with timestamps outside those months remain in the data and other aggregations, and are counted in the report's monthly-chart scope note.
 
 The normal pipeline creates these outputs after feature engineering and the processed taxi Parquet write:
 

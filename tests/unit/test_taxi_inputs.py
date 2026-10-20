@@ -18,10 +18,15 @@ def test_exact_six_months_selected(tmp_path):
     assert [path.name for path in validate_taxi_inputs(pattern, "csv")] == list(EXPECTED_TAXI_FILES)
 
 
-def test_missing_month_rejected(tmp_path):
+def test_single_month_is_accepted(tmp_path):
+    selected = "yellow_tripdata_2020-04.csv"
+    make_months(tmp_path, (selected,))
+    assert [path.name for path in validate_taxi_inputs(str(tmp_path / selected), "csv")] == [selected]
+
     make_months(tmp_path, EXPECTED_TAXI_FILES[:-1])
+    full_window_pattern = str(tmp_path / "yellow_tripdata_2020-0[1-6].csv")
     with pytest.raises(ValueError, match="2020-06"):
-        validate_taxi_inputs(str(tmp_path / "yellow_tripdata_2020-*.csv"), "csv")
+        validate_taxi_inputs(full_window_pattern, "csv")
 
 
 def test_2019_or_later_month_rejected(tmp_path):

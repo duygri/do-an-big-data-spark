@@ -2,7 +2,7 @@
 
 Dự án môn **Nhập dữ liệu lớn**, xây dựng pipeline batch để nhập và xử lý dữ liệu chuyến taxi vàng tại New York bằng Python và Apache Spark (PySpark). Pipeline đọc dữ liệu CSV qua Bronze, làm sạch sang Silver, tạo đặc trưng chuyến đi, bổ sung nhãn khu vực đón/trả và ghi Parquet đã xử lý vào Gold.
 
-> **Trạng thái:** Pipeline xử lý đúng sáu tệp taxi tháng 01–06/2020, tạo Bronze, Silver, báo cáo chất lượng, feature taxi, zone enrichment tùy chọn, processed Gold và bảy bảng tổng hợp; báo cáo Markdown, CSV và biểu đồ được sinh cùng lần chạy.
+> **Trạng thái:** Pipeline mặc định xử lý sáu tệp taxi tháng 01–06/2020, đồng thời cho phép chọn riêng một tháng hoặc một tập con trong khoảng này. Pipeline tạo Bronze, Silver, báo cáo chất lượng, feature taxi, zone enrichment tùy chọn, processed Gold và bảy bảng tổng hợp.
 
 ## Mục tiêu đề tài
 
@@ -18,20 +18,20 @@ Dự án môn **Nhập dữ liệu lớn**, xây dựng pipeline batch để nh�
 - Quãng đường, tiền cước, tiền tip và phương thức thanh toán phân bố ra sao?
 - Các chỉ số taxi thay đổi như thế nào trong sáu tháng đầu năm 2020?
 
-Pipeline tạo kết quả cho các câu hỏi trên trên dữ liệu tháng 01–06/2020. Phạm vi này không bao gồm so sánh với năm 2019.
+Mặc định pipeline tạo kết quả cho các câu hỏi trên trên dữ liệu tháng 01–06/2020. Có thể đổi `input.path` để chạy riêng một tháng hoặc một tập con trong sáu tháng này. Phạm vi xử lý không bao gồm năm 2019.
 
 ## Dữ liệu
 
-Nguồn dữ liệu là bộ [New York Yellow Taxi Trip Data trên Kaggle](https://www.kaggle.com/datasets/microize/newyork-yellow-taxi-trip-data-2020-2019). Bộ Kaggle có 18 tệp CSV theo tháng từ 01/2019 đến 06/2020; pipeline của repo chỉ đọc sáu tệp từ **01/2020 đến 06/2020**. Dữ liệu do NYC Taxi & Limousine Commission (TLC) công bố; xem thêm [trang dữ liệu chuyến đi của TLC](https://www.nyc.gov/site/tlc/about/tlc-trip-record-data.page).
+Nguồn dữ liệu là bộ [New York Yellow Taxi Trip Data trên Kaggle](https://www.kaggle.com/datasets/microize/newyork-yellow-taxi-trip-data-2020-2019). Bộ Kaggle có 18 tệp CSV theo tháng từ 01/2019 đến 06/2020; pipeline hỗ trợ chọn một hoặc nhiều tệp trong khoảng **01/2020 đến 06/2020**, mặc định chọn cả sáu. Dữ liệu do NYC Taxi & Limousine Commission (TLC) công bố; xem thêm [trang dữ liệu chuyến đi của TLC](https://www.nyc.gov/site/tlc/about/tlc-trip-record-data.page).
 
 Các trường được pipeline sử dụng gồm thời điểm đón/trả, số hành khách, quãng đường, mã khu vực đón/trả, loại thanh toán và các khoản cước/phụ phí. Schema hiện khai báo 18 cột trong `src/ingestion/schema.py`. Nếu có `taxi+_zone_lookup.csv`, pipeline dùng bảng này để bổ sung tên khu vực; nếu không có, pipeline vẫn chạy với mã khu vực. Dữ liệu shapefile chưa được đọc.
 
-Tải dữ liệu từ Kaggle, giải nén đúng sáu tệp `yellow_tripdata_2020-01.csv` đến `yellow_tripdata_2020-06.csv` vào `data/raw/nyc_taxi/`. Cấu hình mặc định chỉ chọn các tháng này; các tệp 2019 khác có thể nằm cùng thư mục nhưng không khớp glob đầu vào. Dữ liệu thô và dữ liệu sinh ra không được đưa vào Git.
+Tải dữ liệu từ Kaggle, giải nén các tháng muốn chạy vào `data/raw/nyc_taxi/`. Để chạy mặc định toàn kỳ, cần đủ sáu tệp `yellow_tripdata_2020-01.csv` đến `yellow_tripdata_2020-06.csv`. Các tệp 2019 khác có thể nằm cùng thư mục nhưng không được chọn theo glob mặc định. Dữ liệu thô và dữ liệu sinh ra không được đưa vào Git.
 
 ## Pipeline
 
 ```text
-6 tệp CSV (01–06/2020)
+1 hoặc nhiều tệp CSV đã chọn (mặc định 01–06/2020)
    │
    ▼
 data/raw/nyc_taxi/
@@ -57,7 +57,7 @@ reports/generated/taxi_aggregations/  CSV, báo cáo Markdown và biểu đồ t
 - Chuẩn hóa `store_and_fwd_flag` bằng cách bỏ khoảng trắng và chuyển về chữ thường.
 - Thống kê giá trị null, một số thống kê số học và các điều kiện bất thường. Các cảnh báo được ghi vào báo cáo; bản ghi bị cảnh báo vẫn được giữ trong Silver để tránh tự ý loại dữ liệu.
 
-Bronze và Silver được ghi đè khi chạy lại pipeline. Báo cáo chứa số dòng theo từng giai đoạn, schema, thống kê null, min/max/average và số lượng các cảnh báo chất lượng.
+Bronze, Silver, Gold và báo cáo được ghi đè khi chạy lại pipeline. Mỗi lần chạy phản ánh phạm vi tháng đang chọn trong `input.path`; hãy đổi cấu hình về glob sáu tháng nếu muốn tạo lại kết quả toàn kỳ.
 
 ## Công nghệ
 
@@ -85,14 +85,14 @@ Nếu dùng macOS/Linux, kích hoạt môi trường ảo bằng `source .venv/b
 
 ### 2. Chuẩn bị dữ liệu và cấu hình
 
-1. Tải bộ dữ liệu từ Kaggle và giải nén sáu tệp tháng 01–06/2020 vào `data/raw/nyc_taxi/`.
+1. Tải bộ dữ liệu từ Kaggle và giải nén các tệp tháng muốn chạy vào `data/raw/nyc_taxi/`. Chạy mặc định toàn kỳ cần đủ sáu tệp tháng 01–06/2020.
 2. Sao chép cấu hình mẫu:
 
    ```powershell
    Copy-Item configs/config.example.yaml configs/config.yaml
    ```
 
-3. Cấu hình mặc định chọn `yellow_tripdata_2020-0[1-6].csv`. Pipeline yêu cầu đủ đúng sáu tệp tháng 01–06/2020 trước khi Spark khởi động; không trỏ `input.path` tới một tệp đơn hoặc các tháng khác.
+3. Cấu hình mặc định chọn `yellow_tripdata_2020-0[1-6].csv`. Có thể thay `input.path` bằng tên một file, ví dụ `data/raw/nyc_taxi/yellow_tripdata_2020-04.csv`, hoặc một tập con. Pipeline chỉ chấp nhận các file tháng 01–06/2020; không dùng `yellow_tripdata_*.csv` vì mẫu đó có thể chọn cả dữ liệu 2019.
 
 ### 3. Chạy pipeline
 

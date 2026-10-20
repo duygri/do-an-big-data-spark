@@ -1,0 +1,27 @@
+input:
+  # Replace 2020-04 with one available month from 2020-01 through 2020-06.
+  # Example: yellow_tripdata_2020-01.csv
+  path: data/raw/nyc_taxi/yellow_tripdata_2020-01.csv
+  format: csv
+  schema: yellow_taxi
+  header: true
+  zone_lookup_path: data/raw/nyc_taxi/taxi+_zone_lookup.csv
+
+paths:
+  raw: data/raw
+  bronze: data/single_month/bronze
+  silver: data/single_month/silver
+  gold: data/single_month/gold
+  processed_taxi: data/single_month/gold/taxi_trips
+  aggregations: data/single_month/gold/aggregations
+  reports: reports/single_month
+  analysis_reports: reports/single_month/taxi_aggregations
+
+aggregation:
+  top_n: 10
+
+spark:
+  app_name: big-data-spark-pipeline-single-month
+  master: local[*]
+  session_timezone: America/New_York
+  max_partition_bytes: 134217728

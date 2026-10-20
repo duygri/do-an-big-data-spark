@@ -29,6 +29,14 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
+def _selected_months(input_files: list[Path]) -> tuple[tuple[int, int], ...]:
+    months = []
+    for path in input_files:
+        year_text, month_text = path.stem.removeprefix("yellow_tripdata_").split("-", maxsplit=1)
+        months.append((int(year_text), int(month_text)))
+    return tuple(sorted(set(months)))
+
+
 def run(config_path: Path) -> int:
     if not config_path.is_file():
         raise FileNotFoundError(f"Configuration file not found: {config_path}")
@@ -151,6 +159,7 @@ def run(config_path: Path) -> int:
             aggregations_path,
             analysis_reports_path,
             top_n=aggregation_top_n,
+            selected_months=_selected_months(input_files),
         )
         LOG.info(
             "Taxi aggregations complete: tables=%s; report=%s",

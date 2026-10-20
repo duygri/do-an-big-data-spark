@@ -28,12 +28,16 @@ configs/config.yaml
 spark-warehouse/
 metastore_db/
 reports/generated/
+reports/single_month/
+reports/test_*/
 
 # Large or generated data files
 data/raw/**
 data/bronze/**
 data/silver/**
 data/gold/**
+data/single_month/
+data/test_*/
 !data/raw/.gitkeep
 !data/bronze/.gitkeep
 !data/silver/.gitkeep

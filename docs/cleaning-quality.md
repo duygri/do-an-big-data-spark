@@ -1,6 +1,6 @@
 # NYC yellow taxi cleaning and quality policy
 
-The pipeline reads verified Bronze Parquet from the six January–June 2020 monthly CSVs, then performs missing-value handling, exact-row deduplication, text normalization, validation, and Silver Parquet export. Run `python -m src.pipeline.main --config configs/config.yaml` from the repository root. The default Silver path is `data/silver/cleaned/` and reports are written to `reports/generated/taxi_quality.json` and `taxi_quality.md`. Generated data and reports are excluded from Git.
+The pipeline reads verified Bronze Parquet from the monthly CSVs selected by `input.path`, then performs missing-value handling, exact-row deduplication, text normalization, validation, and Silver Parquet export. It supports one month or a subset of the six supported months (January–June 2020); the default selects all six. Run `python -m src.pipeline.main --config configs/config.yaml` from the repository root. The default Silver path is `data/silver/cleaned/` and reports are written to `reports/generated/taxi_quality.json` and `taxi_quality.md`. Generated data and reports are excluded from Git.
 
 | Field group | Policy |
 | --- | --- |

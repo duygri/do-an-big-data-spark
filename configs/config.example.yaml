@@ -1,4 +1,6 @@
 input:
+  # Use one exact month for a smaller run, e.g. yellow_tripdata_2020-04.csv.
+  # The default selects all six supported months from 2020-01 through 2020-06.
   path: data/raw/nyc_taxi/yellow_tripdata_2020-0[1-6].csv
   format: csv
   schema: yellow_taxi
